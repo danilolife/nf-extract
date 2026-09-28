@@ -1,4 +1,4 @@
-import { Building2, Check, Copy, FileDown, Files, Hash, Layers3, ListChecks, MapPin } from 'lucide-react'
+import { Building2, Check, Copy, FileDown, Files, Hash, Layers3, ListChecks, MapPin, ScanText } from 'lucide-react'
 import type { AnalysisGroup } from '../types'
 
 interface Props {
@@ -89,17 +89,19 @@ export function ResultGroup({ group, onCopy }: Props) {
                   <div className="supplier-cell">
                     <span title={invoice.issuer_name || ''}>{invoice.issuer_name || '—'}</span>
                     <small>{invoice.issuer_cnpj || '—'}</small>
+                    {invoice.supplier_recognized ? <span className="supplier-profile-badge">perfil cadastrado</span> : <span className="supplier-unknown-badge">não cadastrado</span>}
                   </div>
                 </td>
                 <td>
                   <div className="key-line">
                     <span className="mono key-text">{invoice.access_key}</span>
                     {invoice.valid_key && <span className="valid-badge"><Check size={11} /> válida</span>}
+                    {invoice.extraction_method === 'ocr' && <span className="ocr-badge"><ScanText size={11} /> OCR</span>}
                   </div>
                 </td>
                 <td>{invoice.issue_date || '—'}</td>
                 <td>{invoice.total_amount ? `R$ ${invoice.total_amount}` : '—'}</td>
-                <td><div className="origin-cell"><span title={invoice.source_file || ''}>{invoice.source_file || '—'}</span><small>pág. {invoice.pages.join(', ')}</small></div></td>
+                <td><div className="origin-cell"><span title={invoice.source_file || ''}>{invoice.source_file || '—'}</span><small>{invoice.source_kind === 'imagem' ? 'foto/imagem' : `pág. ${invoice.pages.join(', ')}`}{invoice.ocr_rotation ? ` • rot. ${invoice.ocr_rotation}°` : ''}</small></div></td>
                 <td className="action-cell"><button className="icon-button" onClick={() => onCopy(invoice.access_key, `NF ${invoice.nf_number} copiada`)} aria-label="Copiar chave"><Copy size={14} /></button></td>
               </tr>
             ))}

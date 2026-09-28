@@ -9,16 +9,31 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .parser import group_records, parse_pdf_bytes, serialize_groups
+from .parser import (
+    group_records,
+    is_image_filename,
+    parse_image_bytes,
+    parse_pdf_bytes,
+    serialize_groups,
+)
+from .suppliers import serialize_supplier_profiles
 
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE_MB", "25")) * 1024 * 1024
 MAX_FILES = int(os.getenv("MAX_FILES", "30"))
 STATIC_DIR = Path(os.getenv("STATIC_DIR", "/app/static"))
+IMAGE_MIME_TYPES = {
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/webp",
+    "image/bmp",
+    "image/tiff",
+}
 
 app = FastAPI(
     title="NF Extract API",
-    version="2.3.0",
-    description="API para extrair e organizar dados de DANFE/NF-e em PDF.",
+    version="2.6.0",
+    description="API para extrair e organizar dados de DANFE/NF-e em PDF e fotos/imagens.",
 )
 
 origins = [
@@ -40,25 +55,35 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"status": "ok", "service": "nf-extract-api", "version": "2.3.0"}
+    return {"status": "ok", "service": "nf-extract-api", "version": "2.6.0"}
+
+
+@app.get("/api/suppliers")
+def suppliers() -> dict:
+    profiles = serialize_supplier_profiles()
+    return {"count": len(profiles), "suppliers": profiles}
 
 
 @app.post("/api/analyze")
 async def analyze(files: Annotated[list[UploadFile], File(...)]) -> dict:
     if not files:
-        raise HTTPException(status_code=400, detail="Envie pelo menos um arquivo PDF.")
+        raise HTTPException(status_code=400, detail="Envie pelo menos um PDF ou imagem.")
     if len(files) > MAX_FILES:
-        raise HTTPException(status_code=400, detail=f"Máximo de {MAX_FILES} PDFs por análise.")
+        raise HTTPException(status_code=400, detail=f"Máximo de {MAX_FILES} arquivos por análise.")
 
     all_records = []
     file_summaries = []
     warnings: list[str] = []
 
     for upload in files:
-        filename = upload.filename or "arquivo.pdf"
+        filename = upload.filename or "arquivo"
+        lower_name = filename.lower()
         content_type = (upload.content_type or "").lower()
-        if not filename.lower().endswith(".pdf") and content_type != "application/pdf":
-            warnings.append(f"{filename}: ignorado porque não é PDF.")
+        is_pdf = lower_name.endswith(".pdf") or content_type == "application/pdf"
+        is_image = is_image_filename(lower_name) or content_type in IMAGE_MIME_TYPES
+
+        if not (is_pdf or is_image):
+            warnings.append(f"{filename}: ignorado porque não é PDF nem imagem suportada.")
             continue
 
         data = await upload.read()
@@ -67,7 +92,7 @@ async def analyze(files: Annotated[list[UploadFile], File(...)]) -> dict:
             continue
 
         try:
-            records = parse_pdf_bytes(data, filename)
+            records = parse_pdf_bytes(data, filename) if is_pdf else parse_image_bytes(data, filename)
         except ValueError as exc:
             warnings.append(str(exc))
             continue
@@ -78,15 +103,17 @@ async def analyze(files: Annotated[list[UploadFile], File(...)]) -> dict:
                 "filename": filename,
                 "size_bytes": len(data),
                 "unique_keys": len(records),
+                "kind": "pdf" if is_pdf else "imagem",
+                "ocr_used": any(record.extraction_method == "ocr" for record in records),
             }
         )
         if not records:
             warnings.append(
-                f"{filename}: nenhuma chave NF-e válida foi encontrada. Se o PDF for escaneado, será necessário OCR."
+                f"{filename}: nenhuma chave NF-e válida foi encontrada. Verifique se a imagem está legível ou se o documento contém a DANFE completa."
             )
 
     if not file_summaries:
-        raise HTTPException(status_code=400, detail="Nenhum PDF válido pôde ser processado.")
+        raise HTTPException(status_code=400, detail="Nenhum arquivo válido pôde ser processado.")
 
     # Remove duplicidades entre arquivos, preservando os metadados mais completos.
     unique = {}
@@ -101,14 +128,25 @@ async def analyze(files: Annotated[list[UploadFile], File(...)]) -> dict:
         existing.recipient_cnpj = existing.recipient_cnpj or record.recipient_cnpj
         existing.issuer_name = existing.issuer_name or record.issuer_name
         existing.issuer_cnpj = existing.issuer_cnpj or record.issuer_cnpj
+        existing.supplier_profile_id = existing.supplier_profile_id or record.supplier_profile_id
+        existing.supplier_recognized = existing.supplier_recognized or record.supplier_recognized
         existing.issue_date = existing.issue_date or record.issue_date
         existing.total_amount = existing.total_amount or record.total_amount
+        if record.extraction_method == "ocr":
+            existing.extraction_method = "ocr"
+            existing.ocr_rotation = record.ocr_rotation or existing.ocr_rotation
+        if record.source_kind == "imagem":
+            existing.source_kind = "imagem"
 
     records = list(unique.values())
     groups = group_records(records)
     distinct_cargas = sorted({r.carga for r in records if r.carga})
     distinct_cnpjs = sorted({r.recipient_cnpj for r in records if r.recipient_cnpj})
     distinct_issuers = sorted({r.issuer_cnpj for r in records if r.issuer_cnpj})
+    ocr_records = sum(1 for r in records if r.extraction_method == "ocr")
+    image_records = sum(1 for r in records if r.source_kind == "imagem")
+    recognized_supplier_records = sum(1 for r in records if r.supplier_recognized)
+    unknown_supplier_records = sum(1 for r in records if not r.supplier_recognized)
 
     return {
         "summary": {
@@ -118,6 +156,10 @@ async def analyze(files: Annotated[list[UploadFile], File(...)]) -> dict:
             "cargas": len(distinct_cargas),
             "recipient_cnpjs": len(distinct_cnpjs),
             "issuers": len(distinct_issuers),
+            "ocr_records": ocr_records,
+            "image_records": image_records,
+            "recognized_supplier_records": recognized_supplier_records,
+            "unknown_supplier_records": unknown_supplier_records,
         },
         "files": file_summaries,
         "groups": serialize_groups(groups),

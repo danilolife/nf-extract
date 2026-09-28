@@ -1,13 +1,12 @@
 # syntax=docker/dockerfile:1
 
-# NF Extract Online v2.2 - Render-safe build
+# NF Extract Online v2.6 - OCR aprimorado para PDFs escaneados e fotos
 # ---------- Frontend build ----------
 FROM node:22-alpine AS frontend-build
 WORKDIR /frontend
 COPY frontend/package*.json ./
 RUN npm install --no-audit --no-fund
 COPY frontend/ ./
-# Build only with Vite. TypeScript transpilation is handled by Vite/esbuild.
 RUN npx vite build
 
 # ---------- Runtime ----------
@@ -19,6 +18,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     MAX_FILES=30
 
 WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       tesseract-ocr \
+       tesseract-ocr-por \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 

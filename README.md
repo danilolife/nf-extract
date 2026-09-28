@@ -1,12 +1,12 @@
-# NF Extract 2.3
+# NF Extract 2.5
 
-Aplicação web full-stack para analisar DANFE/NF-e em PDF e transformar os documentos em dados prontos para filtrar, copiar e exportar.
+Aplicação web full-stack para analisar DANFE/NF-e em PDF, foto ou imagem e transformar os documentos em dados prontos para filtrar, copiar e exportar.
 
 A versão 2.0 foi preparada para **publicação online em um único serviço**, sem precisar instalar nada no computador do usuário. O mesmo container entrega o frontend React e a API FastAPI.
 
 ## Recursos
 
-- Upload de vários PDFs ao mesmo tempo.
+- Upload de vários PDFs, fotos e imagens ao mesmo tempo, com opção de usar a câmera do celular.
 - Extração da chave de acesso NF-e/NFC-e de 44 dígitos.
 - Validação do dígito verificador da chave.
 - Extração do número da NF, série e modelo pela chave.
@@ -23,8 +23,12 @@ A versão 2.0 foi preparada para **publicação online em um único serviço**, 
 - Duas visualizações: **Por carga** e **Tabela geral**.
 - Botão de copiar uma chave, as chaves visíveis, as NFs da carga ou o bloco completo.
 - Exportação dos resultados filtrados em **CSV** e **TXT**.
+- Pré-visualização das fotos antes da análise.
+- OCR com melhoria de contraste, redimensionamento inteligente e tentativa de rotação automática em 0°, 90°, 180° e 270°.
+- Identificação visual de registros lidos por OCR ou pelo texto nativo do PDF.
+- Filtros por origem (PDF/foto) e método de leitura (texto/OCR).
 - Tema claro/escuro e layout responsivo.
-- Processamento em memória: os PDFs não são persistidos nesta versão.
+- Processamento em memória: os arquivos não são persistidos nesta versão.
 
 ## Estrutura
 
@@ -82,7 +86,7 @@ A API e o frontend usam o mesmo domínio:
 ```text
 /                 interface web
 /api/health       status da API
-/api/analyze      análise dos PDFs
+/api/analyze      análise de PDFs e imagens
 /docs             documentação interativa da API
 ```
 
@@ -107,17 +111,17 @@ Abra `http://localhost:8080`.
 
 ### `POST /api/analyze`
 
-Envie um ou mais PDFs no campo multipart `files`.
+Envie um ou mais arquivos no campo multipart `files` (PDF, PNG, JPG, JPEG, WEBP, BMP, TIF, TIFF).
 
 A resposta contém resumo, arquivos processados, grupos por carga/CNPJ e notas individuais.
 
-## Limitação: PDF escaneado
+## OCR para fotos e PDFs escaneados
 
-Esta versão usa PyMuPDF e funciona com DANFEs que possuem texto embutido, como os documentos usados no desenvolvimento. Se o PDF for apenas uma imagem escaneada, será necessário adicionar OCR como fallback em uma evolução futura.
+Esta versão usa OCR com Tesseract como fallback automático para PDFs escaneados e também para fotos/imagens de DANFE. O OCR melhora contraste, ajusta a resolução e testa rotações de 0°, 90°, 180° e 270° quando necessário. O sistema também consegue corrigir exclusivamente o dígito verificador final quando o OCR leu de forma plausível os 43 primeiros dígitos da chave. Para melhores resultados, envie fotos bem enquadradas, com boa iluminação e sem cortes na chave de acesso ou no bloco do destinatário.
 
 ## Segurança
 
-- PDFs processados em memória.
+- PDFs e imagens processados em memória.
 - Sem armazenamento persistente dos documentos nesta versão.
 - Limite padrão de 25 MB por arquivo.
 - Limite padrão de 30 arquivos por análise.
@@ -126,7 +130,6 @@ Esta versão usa PyMuPDF e funciona com DANFEs que possuem texto embutido, como 
 ## Próximas evoluções possíveis
 
 - Login e histórico de análises com Supabase.
-- OCR automático para DANFEs escaneados.
 - Extração de volume, peso e pedido.
 - Exportação XLSX.
 - Armazenamento opcional em bucket privado.
@@ -146,9 +149,9 @@ O build esperado executa, em ordem:
 Se ainda houver falha, abra **Logs** no serviço do Render e copie a primeira linha marcada como `error` ou `failed` para diagnóstico.
 
 
-## Render: confirme que está usando a versão 2.2
+## Render: confirme que está usando a versão 2.6
 
-No GitHub, abra `VERSION.txt`. Ele deve mostrar **NF Extract Online v2.2.0**.
+No GitHub, abra `VERSION.txt`. Ele deve mostrar **NF Extract Online v2.6.0**.
 
 No log do Render, a etapa do frontend deve mostrar:
 
@@ -168,3 +171,87 @@ Se aparecer `tsc -b && vite build`, o Render ainda está construindo uma versão
 ### Correção do DANFE Multigiro
 
 No layout Multigiro/G.R, a ordem textual do PDF pode apresentar primeiro o CNPJ do emitente e somente depois o CNPJ do destinatário. A versão 2.3 deriva o CNPJ do emitente a partir da chave de acesso, ignora esse CNPJ ao analisar a seção `DESTINATÁRIO/REMETENTE` e captura o CNPJ seguinte como destinatário.
+
+
+## Novidades da versão 2.5
+
+- Botão **Usar câmera** no celular.
+- Pré-visualização das imagens selecionadas.
+- OCR em fotos e PDFs escaneados.
+- Correção automática de orientação em 90°, 180° e 270°.
+- Otimização de imagens grandes de celular para reduzir tempo e memória no servidor.
+- Badge **OCR** nas notas reconhecidas por imagem.
+- Filtro **Origem**: PDF ou foto/imagem.
+- Filtro **Leitura**: texto nativo ou OCR.
+- CSV agora informa origem, método de leitura e rotação aplicada.
+- Mantidas as regras: carga apenas para Nordil/Nordil Maré; Multigiro/G.R e outros agrupados por CNPJ do destinatário.
+
+
+## Novidades da versão 2.6 — perfis de fornecedores
+
+O reconhecimento de fornecedor deixou de depender de regras espalhadas no parser. Agora existe um cadastro central em:
+
+```text
+backend/app/suppliers.json
+```
+
+Cada fornecedor pode ter:
+
+- identificador interno;
+- nome oficial;
+- um ou mais CNPJs;
+- nomes/aliases alternativos;
+- regra `uses_carga`;
+- padrões próprios para localizar a carga.
+
+A identificação prioriza o **CNPJ do emitente derivado diretamente da chave de acesso da NF-e**, que é mais confiável do que depender apenas do texto ou OCR do logotipo/nome. O nome/alias fica como fallback.
+
+### Fornecedores cadastrados inicialmente
+
+- Nordil — `03.775.813/0001-41` — usa carga operacional.
+- Multigiro — `00.728.165/0001-84` — não usa carga operacional.
+- G.R Distribuidora — `07.973.261/0001-37` — não usa carga operacional.
+- Farpani — `24.171.697/0001-21` — não usa carga operacional na configuração atual.
+
+### Farpani
+
+A versão 2.6 corrige também um detalhe do layout da Farpani: antes da chave aparecem IE e CNPJ do emitente, o que podia fazer uma expressão genérica começar a montar a chave nos últimos dígitos do CNPJ. A leitura de chave agora tenta primeiro a linha completa, grupos de quatro dígitos e janelas de tokens, sempre validando o DV da NF-e.
+
+No exemplo usado no desenvolvimento, a leitura retorna:
+
+```text
+Fornecedor: FARPANI DISTRIBUIDORA LTDA
+CNPJ fornecedor: 24.171.697/0001-21
+Destinatário: Farias Supermercado Ltda
+CNPJ destinatário: 12.919.734/0003-10
+NF: 73786
+Valor: R$ 2.681,50
+Chave: 25260924171697000121550010000737861242440800
+```
+
+O documento possui `Carga Nro.: 1662`, mas a Farpani está com `uses_carga: false` para preservar a regra operacional atual. Se a empresa passar a usar carga no seu processo, basta trocar esse campo para `true` no perfil da Farpani — sem alterar o parser.
+
+### Como adicionar o próximo fornecedor
+
+Adicione outro bloco ao `suppliers.json`. Exemplo:
+
+```json
+{
+  "id": "novo-fornecedor",
+  "display_name": "NOVO FORNECEDOR LTDA",
+  "cnpjs": ["00.000.000/0001-00"],
+  "aliases": ["NOVO FORNECEDOR"],
+  "uses_carga": false,
+  "carga_patterns": []
+}
+```
+
+O frontend agora mostra se o fornecedor está **perfil cadastrado** ou **não cadastrado**, e inclui um filtro específico para localizar notas de fornecedores ainda sem perfil.
+
+A API também disponibiliza:
+
+```text
+GET /api/suppliers
+```
+
+para listar os perfis atualmente configurados.

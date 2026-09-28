@@ -2,7 +2,7 @@ import type { AnalysisResponse } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
 
-export async function analyzePdfs(files: File[]): Promise<AnalysisResponse> {
+export async function analyzeFiles(files: File[]): Promise<AnalysisResponse> {
   const form = new FormData()
   files.forEach((file) => form.append('files', file))
 
@@ -12,7 +12,7 @@ export async function analyzePdfs(files: File[]): Promise<AnalysisResponse> {
   })
 
   if (!response.ok) {
-    let message = 'Não foi possível analisar os PDFs.'
+    let message = 'Não foi possível analisar os arquivos.'
     try {
       const payload = await response.json()
       message = payload.detail || message

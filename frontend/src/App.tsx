@@ -12,6 +12,7 @@ import {
   Filter,
   LayoutGrid,
   List,
+  ScanText,
   Moon,
   RotateCcw,
   Search,
@@ -20,13 +21,16 @@ import {
   Sun,
   X,
 } from 'lucide-react'
-import { analyzePdfs } from './api'
+import { analyzeFiles } from './api'
 import { ResultGroup } from './components/ResultGroup'
 import { UploadZone } from './components/UploadZone'
 import type { AnalysisGroup, AnalysisResponse, Invoice } from './types'
 
 type ViewMode = 'groups' | 'table'
 type ValidityFilter = 'all' | 'valid' | 'invalid'
+type MethodFilter = 'all' | 'texto' | 'ocr'
+type SourceKindFilter = 'all' | 'pdf' | 'imagem'
+type SupplierStatusFilter = 'all' | 'recognized' | 'unknown'
 type SortMode = 'nf-asc' | 'nf-desc' | 'carga-asc' | 'recipient-asc'
 
 type Filters = {
@@ -37,6 +41,9 @@ type Filters = {
   source: string
   date: string
   validity: ValidityFilter
+  method: MethodFilter
+  sourceKind: SourceKindFilter
+  supplierStatus: SupplierStatusFilter
 }
 
 const EMPTY_FILTERS: Filters = {
@@ -47,6 +54,9 @@ const EMPTY_FILTERS: Filters = {
   source: '',
   date: '',
   validity: 'all',
+  method: 'all',
+  sourceKind: 'all',
+  supplierStatus: 'all',
 }
 
 function normalize(value: string | null | undefined) {
@@ -76,11 +86,13 @@ function csvEscape(value: string | number | null | undefined) {
 }
 
 function buildCsv(invoices: Invoice[]) {
-  const header = ['Carga', 'Fornecedor', 'CNPJ fornecedor', 'Destinatário', 'CNPJ destinatário', 'NF', 'Série', 'Modelo', 'Chave de acesso', 'Emissão', 'Valor', 'Chave válida', 'Arquivo', 'Páginas']
+  const header = ['Carga', 'Fornecedor', 'CNPJ fornecedor', 'Fornecedor cadastrado', 'Perfil fornecedor', 'Destinatário', 'CNPJ destinatário', 'NF', 'Série', 'Modelo', 'Chave de acesso', 'Emissão', 'Valor', 'Chave válida', 'Arquivo', 'Tipo de origem', 'Leitura', 'Rotação OCR', 'Páginas']
   const rows = invoices.map((invoice) => [
     invoice.carga,
     invoice.issuer_name,
     invoice.issuer_cnpj,
+    invoice.supplier_recognized ? 'Sim' : 'Não',
+    invoice.supplier_profile_id || '',
     invoice.recipient_name,
     invoice.recipient_cnpj,
     invoice.nf_number,
@@ -91,6 +103,9 @@ function buildCsv(invoices: Invoice[]) {
     invoice.total_amount,
     invoice.valid_key ? 'Sim' : 'Não',
     invoice.source_file,
+    invoice.source_kind,
+    invoice.extraction_method,
+    invoice.ocr_rotation ? `${invoice.ocr_rotation}°` : '',
     invoice.pages.join(', '),
   ])
   return '\uFEFF' + [header, ...rows].map((row) => row.map(csvEscape).join(';')).join('\n')
@@ -153,12 +168,15 @@ export default function App() {
         invoice.recipient_cnpj,
         invoice.issuer_name,
         invoice.issuer_cnpj,
+        invoice.supplier_profile_id,
         invoice.nf_number,
         invoice.series,
         invoice.access_key,
         invoice.issue_date,
         invoice.total_amount,
         invoice.source_file,
+        invoice.extraction_method,
+        invoice.source_kind,
       ].join(' '))
 
       if (query && !searchable.includes(query)) return false
@@ -169,6 +187,10 @@ export default function App() {
       if (filters.date && invoice.issue_date !== filters.date) return false
       if (filters.validity === 'valid' && !invoice.valid_key) return false
       if (filters.validity === 'invalid' && invoice.valid_key) return false
+      if (filters.method !== 'all' && invoice.extraction_method !== filters.method) return false
+      if (filters.sourceKind !== 'all' && invoice.source_kind !== filters.sourceKind) return false
+      if (filters.supplierStatus === 'recognized' && !invoice.supplier_recognized) return false
+      if (filters.supplierStatus === 'unknown' && invoice.supplier_recognized) return false
       return true
     })
 
@@ -198,7 +220,7 @@ export default function App() {
     return { cargas, cnpjs, amount }
   }, [filteredInvoices])
 
-  const hasFilters = Object.entries(filters).some(([key, value]) => key === 'validity' ? value !== 'all' : Boolean(value))
+  const hasFilters = Object.entries(filters).some(([key, value]) => ['validity', 'method', 'sourceKind', 'supplierStatus'].includes(key) ? value !== 'all' : Boolean(value))
 
   function addFiles(incoming: File[]) {
     setFiles((current) => {
@@ -218,11 +240,11 @@ export default function App() {
     setResult(null)
     setFilters(EMPTY_FILTERS)
     try {
-      const data = await analyzePdfs(files)
+      const data = await analyzeFiles(files)
       setResult(data)
       window.setTimeout(() => document.getElementById('results')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro inesperado ao analisar os PDFs.')
+      setError(err instanceof Error ? err.message : 'Erro inesperado ao analisar os arquivos.')
     } finally {
       setLoading(false)
     }
@@ -269,9 +291,9 @@ export default function App() {
 
       <main className="shell">
         <section className="hero">
-          <div className="hero-badge"><Sparkles size={14} /> Leitura inteligente de DANFE</div>
-          <h1>PDFs de NF-e viram dados organizados em segundos.</h1>
-          <p>Envie seus documentos, extraia <strong>carga, CNPJ, destinatário, NF e chave de acesso</strong>, filtre o resultado e copie exatamente o que precisa.</p>
+          <div className="hero-badge"><Sparkles size={14} /> Leitura inteligente por fornecedor</div>
+          <h1>Cada fornecedor pode ter sua própria regra de leitura.</h1>
+          <p>O sistema reconhece o fornecedor pelo <strong>CNPJ da chave de acesso</strong>, aplica o perfil correto e extrai carga, destinatário, NF, valores e chaves com regras próprias para cada layout.</p>
         </section>
 
         <section className="workspace">
@@ -289,7 +311,7 @@ export default function App() {
 
             <button className="primary-button analyze-button" disabled={!canAnalyze} onClick={handleAnalyze}>
               {loading ? <span className="spinner" /> : <FileSearch size={19} />}
-              {loading ? 'Lendo e organizando os PDFs...' : 'Analisar notas fiscais'}
+              {loading ? 'Lendo e organizando os arquivos...' : 'Analisar notas fiscais'}
               {!loading && <ArrowRight size={18} />}
             </button>
 
@@ -308,15 +330,18 @@ export default function App() {
             </div>
             <h3>Pronto para sua rotina</h3>
             <ul>
-              <li><CheckCircle2 size={16} /> Vários PDFs por análise</li>
-              <li><CheckCircle2 size={16} /> Carga só para Nordil / Nordil Maré</li>
+              <li><CheckCircle2 size={16} /> Vários PDFs e fotos por análise</li>
+              <li><CheckCircle2 size={16} /> OCR com rotação automática</li>
+              <li><CheckCircle2 size={16} /> Câmera do celular e pré-visualização</li>
+              <li><CheckCircle2 size={16} /> Perfis de fornecedor por CNPJ e nome</li>
+              <li><CheckCircle2 size={16} /> Regra de carga configurável por fornecedor</li>
               <li><CheckCircle2 size={16} /> Outros fornecedores por CNPJ</li>
               <li><CheckCircle2 size={16} /> Filtros em todas as informações</li>
               <li><CheckCircle2 size={16} /> Cópia individual ou em lote</li>
               <li><CheckCircle2 size={16} /> Exportação TXT e CSV</li>
               <li><CheckCircle2 size={16} /> Validação da chave de 44 dígitos</li>
             </ul>
-            <p className="privacy-note">Nesta versão, os PDFs são processados em memória e não são armazenados pelo sistema.</p>
+            <p className="privacy-note">Nesta versão, os arquivos são processados em memória e não são armazenados pelo sistema.</p>
           </aside>
         </section>
 
@@ -326,7 +351,7 @@ export default function App() {
               <div>
                 <span className="section-kicker"><CheckCircle2 size={14} /> Análise concluída</span>
                 <h2>Central de resultados</h2>
-                <p>{result.summary.unique_keys} chaves únicas extraídas de {result.summary.files} PDF{result.summary.files === 1 ? '' : 's'}.</p>
+                <p>{result.summary.unique_keys} chaves únicas extraídas de {result.summary.files} arquivo{result.summary.files === 1 ? '' : 's'}{result.summary.ocr_records > 0 ? ` • ${result.summary.ocr_records} por OCR` : ''}.</p>
               </div>
               <div className="results-heading-actions">
                 <button className="secondary-button" disabled={!filteredInvoices.length} onClick={() => copy(visibleKeys, 'Chaves filtradas copiadas')}>
@@ -349,6 +374,8 @@ export default function App() {
               </div>
               <div className="stat-card"><strong>{filteredTotals.cargas}</strong><span>cargas Nordil</span></div>
               <div className="stat-card"><strong>{filteredTotals.cnpjs}</strong><span>CNPJs</span></div>
+              <div className="stat-card"><strong>{filteredInvoices.filter((invoice) => invoice.extraction_method === 'ocr').length}</strong><span>lidas por OCR</span></div>
+              <div className="stat-card"><strong>{new Set(filteredInvoices.filter((invoice) => invoice.supplier_recognized).map((invoice) => invoice.issuer_cnpj)).size}</strong><span>fornecedores cadastrados</span></div>
               <div className="stat-card"><strong>{filteredTotals.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong><span>valor das notas visíveis</span></div>
             </div>
 
@@ -406,6 +433,33 @@ export default function App() {
                   <select value={filters.source} onChange={(event) => setFilter('source', event.target.value)}>
                     <option value="">Todos</option>
                     {filterOptions.sources.map((value) => <option key={value} value={value}>{value}</option>)}
+                  </select>
+                </label>
+
+                <label className="select-field">
+                  <span>Origem</span>
+                  <select value={filters.sourceKind} onChange={(event) => setFilter('sourceKind', event.target.value as SourceKindFilter)}>
+                    <option value="all">Todos</option>
+                    <option value="pdf">PDF</option>
+                    <option value="imagem">Foto / imagem</option>
+                  </select>
+                </label>
+
+                <label className="select-field">
+                  <span>Leitura</span>
+                  <select value={filters.method} onChange={(event) => setFilter('method', event.target.value as MethodFilter)}>
+                    <option value="all">Todas</option>
+                    <option value="texto">Texto do PDF</option>
+                    <option value="ocr">OCR</option>
+                  </select>
+                </label>
+
+                <label className="select-field">
+                  <span>Cadastro fornecedor</span>
+                  <select value={filters.supplierStatus} onChange={(event) => setFilter('supplierStatus', event.target.value as SupplierStatusFilter)}>
+                    <option value="all">Todos</option>
+                    <option value="recognized">Cadastrados</option>
+                    <option value="unknown">Não cadastrados</option>
                   </select>
                 </label>
 
@@ -482,6 +536,7 @@ export default function App() {
                         <th>Emissão</th>
                         <th>Valor</th>
                         <th>Origem</th>
+                        <th>Leitura</th>
                         <th></th>
                       </tr>
                     </thead>
@@ -489,7 +544,7 @@ export default function App() {
                       {filteredInvoices.map((invoice) => (
                         <tr key={invoice.access_key}>
                           <td><span className={invoice.carga ? 'load-badge' : 'no-load-badge'}>{invoice.carga || 'Sem carga'}</span></td>
-                          <td><div className="supplier-cell"><span title={invoice.issuer_name || ''}>{invoice.issuer_name || '—'}</span><small>{invoice.issuer_cnpj || '—'}</small></div></td>
+                          <td><div className="supplier-cell"><span title={invoice.issuer_name || ''}>{invoice.issuer_name || '—'}</span><small>{invoice.issuer_cnpj || '—'}</small>{invoice.supplier_recognized ? <span className="supplier-profile-badge">perfil cadastrado</span> : <span className="supplier-unknown-badge">não cadastrado</span>}</div></td>
                           <td className="recipient-cell" title={invoice.recipient_name || ''}>{invoice.recipient_name || '—'}</td>
                           <td className="mono small-mono">{invoice.recipient_cnpj || '—'}</td>
                           <td className="mono nf-cell">{invoice.nf_number}</td>
@@ -501,7 +556,8 @@ export default function App() {
                           </td>
                           <td>{invoice.issue_date || '—'}</td>
                           <td>{invoice.total_amount ? `R$ ${invoice.total_amount}` : '—'}</td>
-                          <td><div className="origin-cell"><span title={invoice.source_file || ''}>{invoice.source_file || '—'}</span><small>pág. {invoice.pages.join(', ')}</small></div></td>
+                          <td><div className="origin-cell"><span title={invoice.source_file || ''}>{invoice.source_file || '—'}</span><small>{invoice.source_kind === 'imagem' ? 'foto/imagem' : `pág. ${invoice.pages.join(', ')}`}</small></div></td>
+                          <td><span className={invoice.extraction_method === 'ocr' ? 'ocr-badge' : 'text-badge'}><ScanText size={11} /> {invoice.extraction_method === 'ocr' ? 'OCR' : 'texto'}</span></td>
                           <td className="action-cell"><button className="icon-button" onClick={() => copy(invoice.access_key, `NF ${invoice.nf_number} copiada`)} aria-label="Copiar chave"><Copy size={14} /></button></td>
                         </tr>
                       ))}

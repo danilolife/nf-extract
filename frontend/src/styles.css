@@ -296,3 +296,49 @@ tbody tr:hover { background: rgba(124,92,244,.025); }
   .segmented-control button { flex: 1; justify-content: center; }
   .result-footer button { width: 100%; }
 }
+
+/* v2.5 — photo/OCR UX */
+.upload-actions { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.file-preview {
+  width: 46px;
+  height: 46px;
+  border-radius: 11px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.18);
+  flex: 0 0 auto;
+}
+.file-row-actions { display: flex; align-items: center; gap: 8px; }
+.image-badge, .ocr-badge, .text-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.image-badge { color: #6f54d9; background: rgba(124,92,244,.09); border: 1px solid rgba(124,92,244,.09); }
+.ocr-badge { color: #9257d7; background: rgba(180,95,241,.10); border: 1px solid rgba(180,95,241,.10); }
+.text-badge { color: var(--muted); background: rgba(110,105,122,.07); border: 1px solid var(--border); }
+.key-line { flex-wrap: wrap; }
+.stats-grid { grid-template-columns: 1.2fr .7fr .7fr .7fr 1.3fr; }
+.master-table { min-width: 1360px; }
+
+@media (max-width: 1050px) {
+  .stats-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 620px) {
+  .upload-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .upload-actions button { width: 100%; }
+  .file-row { align-items: flex-start; }
+  .file-row-actions { flex-direction: column-reverse; align-items: flex-end; }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+}
+
+.supplier-profile-badge, .supplier-unknown-badge { display: inline-flex; width: fit-content; align-items: center; padding: 3px 6px; border-radius: 999px; font-size: 8px; font-weight: 760; line-height: 1; }
+.supplier-profile-badge { color: var(--success); background: rgba(35,133,100,.09); border: 1px solid rgba(35,133,100,.10); }
+.supplier-unknown-badge { color: #9a6c1f; background: rgba(215,154,38,.10); border: 1px solid rgba(215,154,38,.12); }
