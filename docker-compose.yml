@@ -1,0 +1,9 @@
+services:
+  nf-extract:
+    build: .
+    ports:
+      - "8080:10000"
+    environment:
+      - PORT=10000
+      - MAX_FILE_SIZE_MB=25
+      - MAX_FILES=30

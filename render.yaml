@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: nf-extract
+    runtime: docker
+    plan: free
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: MAX_FILE_SIZE_MB
+        value: 25
+      - key: MAX_FILES
+        value: 30
