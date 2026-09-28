@@ -129,3 +129,30 @@ Esta versão usa PyMuPDF e funciona com DANFEs que possuem texto embutido, como 
 - Extração de volume, peso e pedido.
 - Exportação XLSX.
 - Armazenamento opcional em bucket privado.
+
+## Se o primeiro deploy no Render aparecer como “Failed deploy”
+
+A versão 2.1 corrige a configuração de build do frontend para o ambiente do Render. Depois de substituir os arquivos no GitHub, abra o serviço `nf-extract` no Render e use **Manual Deploy → Deploy latest commit**.
+
+O build esperado executa, em ordem:
+
+1. `npm install --no-audit --no-fund`
+2. `npm run build` (`vite build`)
+3. instalação das dependências Python
+4. inicialização do FastAPI na porta fornecida pelo Render
+5. verificação de saúde em `/api/health`
+
+Se ainda houver falha, abra **Logs** no serviço do Render e copie a primeira linha marcada como `error` ou `failed` para diagnóstico.
+
+
+## Render: confirme que está usando a versão 2.2
+
+No GitHub, abra `VERSION.txt`. Ele deve mostrar **NF Extract Online v2.2.0**.
+
+No log do Render, a etapa do frontend deve mostrar:
+
+```text
+RUN npx vite build
+```
+
+Se aparecer `tsc -b && vite build`, o Render ainda está construindo uma versão antiga do repositório. Faça commit dos arquivos atualizados e use **Manual Deploy → Clear build cache & deploy** no Render.

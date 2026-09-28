@@ -1,0 +1,4 @@
+NF Extract Online v2.2.0
+Render fix: frontend Docker build uses `npx vite build` directly.
+Expected Render log: `RUN npx vite build`
+If the log still shows `tsc -b && vite build`, Render is building an older GitHub commit.

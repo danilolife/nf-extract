@@ -1,12 +1,14 @@
 # syntax=docker/dockerfile:1
 
+# NF Extract Online v2.2 - Render-safe build
 # ---------- Frontend build ----------
 FROM node:22-alpine AS frontend-build
 WORKDIR /frontend
 COPY frontend/package*.json ./
-RUN npm install
+RUN npm install --no-audit --no-fund
 COPY frontend/ ./
-RUN npm run build
+# Build only with Vite. TypeScript transpilation is handled by Vite/esbuild.
+RUN npx vite build
 
 # ---------- Runtime ----------
 FROM python:3.12-slim AS runtime
