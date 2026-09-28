@@ -33,6 +33,7 @@ type Filters = {
   query: string
   carga: string
   cnpj: string
+  issuer: string
   source: string
   date: string
   validity: ValidityFilter
@@ -42,6 +43,7 @@ const EMPTY_FILTERS: Filters = {
   query: '',
   carga: '',
   cnpj: '',
+  issuer: '',
   source: '',
   date: '',
   validity: 'all',
@@ -74,9 +76,11 @@ function csvEscape(value: string | number | null | undefined) {
 }
 
 function buildCsv(invoices: Invoice[]) {
-  const header = ['Carga', 'Destinatário', 'CNPJ', 'NF', 'Série', 'Modelo', 'Chave de acesso', 'Emissão', 'Valor', 'Chave válida', 'Arquivo', 'Páginas']
+  const header = ['Carga', 'Fornecedor', 'CNPJ fornecedor', 'Destinatário', 'CNPJ destinatário', 'NF', 'Série', 'Modelo', 'Chave de acesso', 'Emissão', 'Valor', 'Chave válida', 'Arquivo', 'Páginas']
   const rows = invoices.map((invoice) => [
     invoice.carga,
+    invoice.issuer_name,
+    invoice.issuer_cnpj,
     invoice.recipient_name,
     invoice.recipient_cnpj,
     invoice.nf_number,
@@ -97,7 +101,18 @@ function buildTxt(groups: AnalysisGroup[]) {
     .map((group) => {
       const nfs = group.invoices.map((invoice) => invoice.nf_number).join(', ')
       const keys = group.invoices.map((invoice) => invoice.access_key).join('\n')
-      return `CARGA ${group.carga}\nDESTINATÁRIO: ${group.recipient_name}\nCNPJ: ${group.recipient_cnpj}\nNF: ${nfs}\n\n${keys}`
+      const issuers = [...new Set(group.invoices.map((invoice) => invoice.issuer_name).filter(Boolean) as string[])]
+      const issuerCnpjs = [...new Set(group.invoices.map((invoice) => invoice.issuer_cnpj).filter(Boolean) as string[])]
+      return [
+        group.carga ? `CARGA: ${group.carga}` : null,
+        `DESTINATÁRIO: ${group.recipient_name}`,
+        `CNPJ DESTINATÁRIO: ${group.recipient_cnpj}`,
+        issuers.length ? `FORNECEDOR: ${issuers.join(' | ')}` : null,
+        issuerCnpjs.length ? `CNPJ FORNECEDOR: ${issuerCnpjs.join(' | ')}` : null,
+        `NF: ${nfs}`,
+        '',
+        keys,
+      ].filter((line) => line !== null).join('\n')
     })
     .join('\n\n----------------------------------------\n\n')
 }
@@ -123,9 +138,10 @@ export default function App() {
   const filterOptions = useMemo(() => {
     const cargas = [...new Set(allInvoices.map((invoice) => invoice.carga).filter(Boolean) as string[])].sort()
     const cnpjs = [...new Set(allInvoices.map((invoice) => invoice.recipient_cnpj).filter(Boolean) as string[])].sort()
+    const issuers = [...new Set(allInvoices.map((invoice) => invoice.issuer_name).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, 'pt-BR'))
     const sources = [...new Set(allInvoices.map((invoice) => invoice.source_file).filter(Boolean) as string[])].sort()
     const dates = [...new Set(allInvoices.map((invoice) => invoice.issue_date).filter(Boolean) as string[])].sort()
-    return { cargas, cnpjs, sources, dates }
+    return { cargas, cnpjs, issuers, sources, dates }
   }, [allInvoices])
 
   const filteredInvoices = useMemo(() => {
@@ -135,6 +151,8 @@ export default function App() {
         invoice.carga,
         invoice.recipient_name,
         invoice.recipient_cnpj,
+        invoice.issuer_name,
+        invoice.issuer_cnpj,
         invoice.nf_number,
         invoice.series,
         invoice.access_key,
@@ -146,6 +164,7 @@ export default function App() {
       if (query && !searchable.includes(query)) return false
       if (filters.carga && invoice.carga !== filters.carga) return false
       if (filters.cnpj && invoice.recipient_cnpj !== filters.cnpj) return false
+      if (filters.issuer && invoice.issuer_name !== filters.issuer) return false
       if (filters.source && invoice.source_file !== filters.source) return false
       if (filters.date && invoice.issue_date !== filters.date) return false
       if (filters.validity === 'valid' && !invoice.valid_key) return false
@@ -290,7 +309,8 @@ export default function App() {
             <h3>Pronto para sua rotina</h3>
             <ul>
               <li><CheckCircle2 size={16} /> Vários PDFs por análise</li>
-              <li><CheckCircle2 size={16} /> Agrupamento por carga e CNPJ</li>
+              <li><CheckCircle2 size={16} /> Carga só para Nordil / Nordil Maré</li>
+              <li><CheckCircle2 size={16} /> Outros fornecedores por CNPJ</li>
               <li><CheckCircle2 size={16} /> Filtros em todas as informações</li>
               <li><CheckCircle2 size={16} /> Cópia individual ou em lote</li>
               <li><CheckCircle2 size={16} /> Exportação TXT e CSV</li>
@@ -327,7 +347,7 @@ export default function App() {
                 <div><strong>{filteredInvoices.length}</strong><span>chaves exibidas</span></div>
                 {filteredInvoices.length !== result.summary.unique_keys && <small>de {result.summary.unique_keys}</small>}
               </div>
-              <div className="stat-card"><strong>{filteredTotals.cargas}</strong><span>cargas</span></div>
+              <div className="stat-card"><strong>{filteredTotals.cargas}</strong><span>cargas Nordil</span></div>
               <div className="stat-card"><strong>{filteredTotals.cnpjs}</strong><span>CNPJs</span></div>
               <div className="stat-card"><strong>{filteredTotals.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong><span>valor das notas visíveis</span></div>
             </div>
@@ -344,7 +364,7 @@ export default function App() {
                   <input
                     value={filters.query}
                     onChange={(event) => setFilter('query', event.target.value)}
-                    placeholder="Buscar NF, chave, carga, CNPJ, destinatário..."
+                    placeholder="Buscar NF, chave, carga, CNPJ, fornecedor, destinatário..."
                   />
                   {filters.query && <button onClick={() => setFilter('query', '')} aria-label="Limpar busca"><X size={14} /></button>}
                 </label>
@@ -362,6 +382,14 @@ export default function App() {
                   <select value={filters.cnpj} onChange={(event) => setFilter('cnpj', event.target.value)}>
                     <option value="">Todos</option>
                     {filterOptions.cnpjs.map((value) => <option key={value} value={value}>{value}</option>)}
+                  </select>
+                </label>
+
+                <label className="select-field wide-select">
+                  <span>Fornecedor</span>
+                  <select value={filters.issuer} onChange={(event) => setFilter('issuer', event.target.value)}>
+                    <option value="">Todos</option>
+                    {filterOptions.issuers.map((value) => <option key={value} value={value}>{value}</option>)}
                   </select>
                 </label>
 
@@ -420,7 +448,7 @@ export default function App() {
 
             <div className="view-toolbar">
               <div className="segmented-control" role="group" aria-label="Modo de visualização">
-                <button className={viewMode === 'groups' ? 'active' : ''} onClick={() => setViewMode('groups')}><LayoutGrid size={15} /> Por carga</button>
+                <button className={viewMode === 'groups' ? 'active' : ''} onClick={() => setViewMode('groups')}><LayoutGrid size={15} /> Agrupado</button>
                 <button className={viewMode === 'table' ? 'active' : ''} onClick={() => setViewMode('table')}><List size={15} /> Tabela geral</button>
               </div>
               <span>Mostrando {filteredInvoices.length} registro{filteredInvoices.length === 1 ? '' : 's'}</span>
@@ -436,7 +464,7 @@ export default function App() {
             ) : viewMode === 'groups' ? (
               <div className="groups-stack">
                 {filteredGroups.map((group) => (
-                  <ResultGroup key={`${group.carga}-${group.recipient_cnpj}`} group={group} onCopy={copy} />
+                  <ResultGroup key={`${group.group_type}-${group.carga || 'sem-carga'}-${group.recipient_cnpj}`} group={group} onCopy={copy} />
                 ))}
               </div>
             ) : (
@@ -446,6 +474,7 @@ export default function App() {
                     <thead>
                       <tr>
                         <th>Carga</th>
+                        <th>Fornecedor</th>
                         <th>Destinatário</th>
                         <th>CNPJ</th>
                         <th>NF</th>
@@ -459,7 +488,8 @@ export default function App() {
                     <tbody>
                       {filteredInvoices.map((invoice) => (
                         <tr key={invoice.access_key}>
-                          <td><span className="load-badge">{invoice.carga || '—'}</span></td>
+                          <td><span className={invoice.carga ? 'load-badge' : 'no-load-badge'}>{invoice.carga || 'Sem carga'}</span></td>
+                          <td><div className="supplier-cell"><span title={invoice.issuer_name || ''}>{invoice.issuer_name || '—'}</span><small>{invoice.issuer_cnpj || '—'}</small></div></td>
                           <td className="recipient-cell" title={invoice.recipient_name || ''}>{invoice.recipient_name || '—'}</td>
                           <td className="mono small-mono">{invoice.recipient_cnpj || '—'}</td>
                           <td className="mono nf-cell">{invoice.nf_number}</td>

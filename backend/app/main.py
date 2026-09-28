@@ -17,7 +17,7 @@ STATIC_DIR = Path(os.getenv("STATIC_DIR", "/app/static"))
 
 app = FastAPI(
     title="NF Extract API",
-    version="2.0.0",
+    version="2.3.0",
     description="API para extrair e organizar dados de DANFE/NF-e em PDF.",
 )
 
@@ -40,7 +40,7 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"status": "ok", "service": "nf-extract-api", "version": "2.0.0"}
+    return {"status": "ok", "service": "nf-extract-api", "version": "2.3.0"}
 
 
 @app.post("/api/analyze")
@@ -99,6 +99,8 @@ async def analyze(files: Annotated[list[UploadFile], File(...)]) -> dict:
         existing.carga = existing.carga or record.carga
         existing.recipient_name = existing.recipient_name or record.recipient_name
         existing.recipient_cnpj = existing.recipient_cnpj or record.recipient_cnpj
+        existing.issuer_name = existing.issuer_name or record.issuer_name
+        existing.issuer_cnpj = existing.issuer_cnpj or record.issuer_cnpj
         existing.issue_date = existing.issue_date or record.issue_date
         existing.total_amount = existing.total_amount or record.total_amount
 
@@ -106,6 +108,7 @@ async def analyze(files: Annotated[list[UploadFile], File(...)]) -> dict:
     groups = group_records(records)
     distinct_cargas = sorted({r.carga for r in records if r.carga})
     distinct_cnpjs = sorted({r.recipient_cnpj for r in records if r.recipient_cnpj})
+    distinct_issuers = sorted({r.issuer_cnpj for r in records if r.issuer_cnpj})
 
     return {
         "summary": {
@@ -114,6 +117,7 @@ async def analyze(files: Annotated[list[UploadFile], File(...)]) -> dict:
             "groups": len(groups),
             "cargas": len(distinct_cargas),
             "recipient_cnpjs": len(distinct_cnpjs),
+            "issuers": len(distinct_issuers),
         },
         "files": file_summaries,
         "groups": serialize_groups(groups),

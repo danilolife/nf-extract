@@ -1,4 +1,10 @@
-NF Extract Online v2.2.0
-Render fix: frontend Docker build uses `npx vite build` directly.
-Expected Render log: `RUN npx vite build`
-If the log still shows `tsc -b && vite build`, Render is building an older GitHub commit.
+NF Extract Online v2.3.0
+
+Correções para DANFE Multigiro / G.R Distribuidora:
+- identifica corretamente CNPJ e nome do destinatário mesmo quando o CNPJ do emitente aparece antes no texto do PDF;
+- extrai fornecedor e CNPJ do fornecedor a partir da chave/DANFE;
+- usa carga operacional somente para fornecedores Nordil / Nordil Maré;
+- outros fornecedores são agrupados pelo CNPJ do destinatário;
+- novo filtro por fornecedor;
+- exibe fornecedor e CNPJ do fornecedor nos resultados;
+- melhora extração do valor total no layout Multigiro/G.R.

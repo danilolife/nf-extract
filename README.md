@@ -1,4 +1,4 @@
-# NF Extract 2.0
+# NF Extract 2.3
 
 Aplicação web full-stack para analisar DANFE/NF-e em PDF e transformar os documentos em dados prontos para filtrar, copiar e exportar.
 
@@ -10,13 +10,15 @@ A versão 2.0 foi preparada para **publicação online em um único serviço**, 
 - Extração da chave de acesso NF-e/NFC-e de 44 dígitos.
 - Validação do dígito verificador da chave.
 - Extração do número da NF, série e modelo pela chave.
-- Carga do documento (`CARGA:`).
-- Nome e CNPJ do destinatário.
+- Carga operacional do documento para **Nordil / Nordil Maré**.
+- Para outros fornecedores (como Multigiro/G.R), ignora `NroCarga` de observações e agrupa por **CNPJ do destinatário**.
+- Nome e CNPJ do destinatário, inclusive em layouts onde o CNPJ aparece longe do nome.
+- Nome e CNPJ do fornecedor/emitente.
 - Data de emissão, valor e página/arquivo de origem quando disponíveis no DANFE.
 - Remoção automática de chaves repetidas em notas com mais de uma página.
 - Agrupamento por carga + CNPJ.
 - Busca global por NF, chave, carga, CNPJ, destinatário, valor ou arquivo.
-- Filtros por carga, CNPJ, data de emissão, arquivo e validade da chave.
+- Filtros por carga, CNPJ do destinatário, **fornecedor**, data de emissão, arquivo e validade da chave.
 - Ordenação por NF, carga ou destinatário.
 - Duas visualizações: **Por carga** e **Tabela geral**.
 - Botão de copiar uma chave, as chaves visíveis, as NFs da carga ou o bloco completo.
@@ -125,7 +127,6 @@ Esta versão usa PyMuPDF e funciona com DANFEs que possuem texto embutido, como 
 
 - Login e histórico de análises com Supabase.
 - OCR automático para DANFEs escaneados.
-- Regras específicas por fornecedor/emitente.
 - Extração de volume, peso e pedido.
 - Exportação XLSX.
 - Armazenamento opcional em bucket privado.
@@ -156,3 +157,14 @@ RUN npx vite build
 ```
 
 Se aparecer `tsc -b && vite build`, o Render ainda está construindo uma versão antiga do repositório. Faça commit dos arquivos atualizados e use **Manual Deploy → Clear build cache & deploy** no Render.
+
+
+## Regra de agrupamento da versão 2.3
+
+- **Nordil / Nordil Maré:** o sistema lê e usa a carga operacional e agrupa por `carga + CNPJ do destinatário`.
+- **Multigiro, G.R e demais fornecedores:** o sistema não usa números `Carga/NroCarga` presentes em observações, boletos ou roteirização. O agrupamento é feito pelo **CNPJ do destinatário**.
+- O fornecedor continua identificado em cada nota e pode ser usado no filtro `Fornecedor`.
+
+### Correção do DANFE Multigiro
+
+No layout Multigiro/G.R, a ordem textual do PDF pode apresentar primeiro o CNPJ do emitente e somente depois o CNPJ do destinatário. A versão 2.3 deriva o CNPJ do emitente a partir da chave de acesso, ignora esse CNPJ ao analisar a seção `DESTINATÁRIO/REMETENTE` e captura o CNPJ seguinte como destinatário.

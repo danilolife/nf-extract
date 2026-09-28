@@ -189,7 +189,7 @@ button:disabled { cursor: not-allowed; }
 .filters-title div { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .filters-title svg { color: var(--accent); }
 .filters-title > span { color: var(--muted); font-size: 10px; }
-.filters-grid { display: grid; grid-template-columns: minmax(250px, 1.8fr) repeat(5, minmax(120px, 1fr)); gap: 9px; padding: 13px 15px 10px; }
+.filters-grid { display: grid; grid-template-columns: minmax(280px, 2fr) repeat(3, minmax(150px, 1fr)); gap: 9px; padding: 13px 15px 10px; }
 .search-field, .select-field { border: 1px solid var(--border); background: var(--surface-solid); border-radius: 11px; min-height: 44px; }
 .search-field { display: flex; align-items: center; gap: 8px; padding: 0 11px; color: var(--muted); }
 .search-field:focus-within, .select-field:focus-within { border-color: rgba(124,92,244,.45); box-shadow: 0 0 0 3px rgba(124,92,244,.07); }
@@ -243,6 +243,10 @@ tbody tr:hover { background: rgba(124,92,244,.025); }
 .master-table-card { border-radius: 19px; overflow: hidden; }
 .master-table { min-width: 1260px; }
 .load-badge { display: inline-flex; padding: 4px 7px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); font-weight: 750; font-size: 10px; }
+.no-load-badge { display: inline-flex; padding: 4px 7px; border-radius: 7px; background: rgba(110, 105, 122, .08); color: var(--muted); font-weight: 700; font-size: 10px; white-space: nowrap; }
+.supplier-cell { display: flex; flex-direction: column; gap: 3px; min-width: 150px; max-width: 230px; }
+.supplier-cell > span { font-size: 11px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.supplier-cell small { font-size: 9px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .recipient-cell { max-width: 185px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .empty-results { border-radius: 20px; padding: 42px 24px; text-align: center; }
 .empty-results > svg { color: var(--accent); }
