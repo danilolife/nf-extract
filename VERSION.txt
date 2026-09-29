@@ -1,2 +1,2 @@
-NF Extract Online v2.6.0
-Perfis de fornecedores por CNPJ/nome + Farpani + reconhecimento de chave reforçado
+NF Extract Online v2.7.0
+Extração de quantidade de volumes em PDF, foto e OCR

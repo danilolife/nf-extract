@@ -130,7 +130,7 @@ Esta versão usa OCR com Tesseract como fallback automático para PDFs escaneado
 ## Próximas evoluções possíveis
 
 - Login e histórico de análises com Supabase.
-- Extração de volume, peso e pedido.
+- Extração de peso bruto/líquido e pedido.
 - Exportação XLSX.
 - Armazenamento opcional em bucket privado.
 
@@ -149,9 +149,9 @@ O build esperado executa, em ordem:
 Se ainda houver falha, abra **Logs** no serviço do Render e copie a primeira linha marcada como `error` ou `failed` para diagnóstico.
 
 
-## Render: confirme que está usando a versão 2.6
+## Render: confirme que está usando a versão 2.7
 
-No GitHub, abra `VERSION.txt`. Ele deve mostrar **NF Extract Online v2.6.0**.
+No GitHub, abra `VERSION.txt`. Ele deve mostrar **NF Extract Online v2.7.0**.
 
 No log do Render, a etapa do frontend deve mostrar:
 
@@ -255,3 +255,39 @@ GET /api/suppliers
 ```
 
 para listar os perfis atualmente configurados.
+
+
+## Novidades da versão 2.7 — quantidade de volumes
+
+A versão 2.7 adiciona leitura automática da **quantidade de volumes transportados** em PDFs nativos, PDFs escaneados e fotos/imagens.
+
+A extração combina três estratégias:
+
+1. leitura da tabela `TRANSPORTADOR / VOLUMES TRANSPORTADOS` por posição das células quando o PDF possui texto;
+2. padrões específicos cadastrados no perfil do fornecedor;
+3. OCR para fotos e páginas escaneadas.
+
+Os resultados passam a incluir, por NF:
+
+- `volume_count`: quantidade identificada;
+- `volume_species`: espécie quando disponível, como `UNIDADE` ou `VOLUMES`;
+- `volume_mode`: indica se o valor é por NF ou um total compartilhado no documento.
+
+### Evitando soma duplicada de volumes
+
+Alguns fornecedores repetem nos vários DANFEs o volume total de uma mesma entrega. O cadastro do fornecedor agora aceita `volume_mode`:
+
+- `per_invoice`: soma a quantidade de cada NF, usado por Nordil e Farpani;
+- `shared_document`: o mesmo total repetido no arquivo é contado apenas uma vez, usado por Multigiro e G.R.
+
+Assim, no arquivo unificado de Multigiro/G.R usado no desenvolvimento, o valor `79 VOLUMES` repetido nas notas continua resultando em **79 volumes**, e não 79 multiplicado pela quantidade de NFs.
+
+No exemplo Farpani, a tabela de transporte contém `QUANTIDADE 173 / ESPÉCIE UNIDADE`, portanto a aplicação retorna **173 volumes/unidades**.
+
+A interface também ganhou:
+
+- coluna **Volumes** na tabela geral e nos grupos;
+- cartão com total de volumes identificados;
+- filtro `Com volume identificado / Sem volume identificado`;
+- volumes nas exportações CSV e TXT;
+- volumes no bloco copiado de cada grupo.

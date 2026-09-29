@@ -1,0 +1,82 @@
+{
+  "suppliers": [
+    {
+      "id": "nordil",
+      "display_name": "NORDIL-NORDESTE DISTRIBUICAO E LOGISTICA LTDA",
+      "cnpjs": [
+        "03.775.813/0001-41"
+      ],
+      "aliases": [
+        "NORDIL",
+        "NORDIL NORDESTE",
+        "NORDIL-NORDESTE",
+        "NORDIL MARE",
+        "NORDIL MARÉ"
+      ],
+      "uses_carga": true,
+      "carga_patterns": [
+        "\\bCARGA\\s*:?\\s*(\\d{4,})\\b",
+        "\\bNRO\\s*CARGA\\s*:?\\s*(\\d{4,})\\b"
+      ],
+      "volume_patterns": [],
+      "volume_mode": "per_invoice"
+    },
+    {
+      "id": "multigiro",
+      "display_name": "MULTIGIRO DISTRIBUIDORA LTDA",
+      "cnpjs": [
+        "00.728.165/0001-84"
+      ],
+      "aliases": [
+        "MULTIGIRO",
+        "MULTIGIRO DISTRIBUIDORA"
+      ],
+      "uses_carga": false,
+      "carga_patterns": [],
+      "volume_patterns": [
+        "\\b(\\d{1,6})\\s+VOLUMES?\\b",
+        "\\bVOLUME\\s*:\\s*[^\\n=]{0,100}=\\s*(\\d{1,6})\\b"
+      ],
+      "volume_mode": "shared_document"
+    },
+    {
+      "id": "gr-distribuidora",
+      "display_name": "G.R DISTRIBUIDORA LTDA",
+      "cnpjs": [
+        "07.973.261/0001-37"
+      ],
+      "aliases": [
+        "G.R DISTRIBUIDORA",
+        "GR DISTRIBUIDORA",
+        "GIRO RAPIDO DISTRIBUIDORA",
+        "GIRO RÁPIDO DISTRIBUIDORA"
+      ],
+      "uses_carga": false,
+      "carga_patterns": [],
+      "volume_patterns": [
+        "\\b(\\d{1,6})\\s+VOLUMES?\\b",
+        "\\bVOLUME\\s*:\\s*[^\\n=]{0,100}=\\s*(\\d{1,6})\\b"
+      ],
+      "volume_mode": "shared_document"
+    },
+    {
+      "id": "farpani",
+      "display_name": "FARPANI DISTRIBUIDORA LTDA",
+      "cnpjs": [
+        "24.171.697/0001-21"
+      ],
+      "aliases": [
+        "FARPANI",
+        "FARPANI DISTRIBUIDORA"
+      ],
+      "uses_carga": false,
+      "carga_patterns": [
+        "\\bCARGA\\s*NRO\\.?\\s*:?\\s*(\\d{2,})\\b"
+      ],
+      "volume_patterns": [
+        "QUANTIDADE\\s+ESP[EÉ]CIE(?:.|\\n){0,220}?\\b(\\d{1,6})\\s+(?:UNIDADE|VOLUMES?|CAIXAS?|PACOTES?)\\b"
+      ],
+      "volume_mode": "per_invoice"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# NF Extract Online v2.6 - OCR aprimorado para PDFs escaneados e fotos
+# NF Extract Online v2.7 - OCR aprimorado para PDFs escaneados e fotos
 # ---------- Frontend build ----------
 FROM node:22-alpine AS frontend-build
 WORKDIR /frontend
