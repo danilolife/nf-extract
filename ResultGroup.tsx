@@ -1,9 +1,10 @@
-import { Boxes, Building2, Check, Copy, FileDown, Files, Hash, Layers3, ListChecks, MapPin, ScanText } from 'lucide-react'
-import type { AnalysisGroup } from '../types'
+import { Boxes, Building2, Check, Copy, FileDown, Files, Hash, Layers3, ListChecks, MapPin, Pencil, ScanText } from 'lucide-react'
+import type { AnalysisGroup, Invoice } from '../types'
 
 interface Props {
   group: AnalysisGroup
   onCopy: (text: string, label?: string) => void
+  onEdit: (invoice: Invoice) => void
 }
 
 function downloadText(filename: string, content: string) {
@@ -22,7 +23,7 @@ function safeFilename(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase()
 }
 
-export function ResultGroup({ group, onCopy }: Props) {
+export function ResultGroup({ group, onCopy, onEdit }: Props) {
   const keys = group.invoices.map((invoice) => invoice.access_key).join('\n')
   const nfs = group.invoices.map((invoice) => invoice.nf_number).join(', ')
   const issuers = [...new Set(group.invoices.map((invoice) => invoice.issuer_name).filter(Boolean) as string[])]
@@ -87,18 +88,21 @@ export function ResultGroup({ group, onCopy }: Props) {
           <tbody>
             {group.invoices.map((invoice) => (
               <tr key={invoice.access_key}>
-                <td className="mono nf-cell">{invoice.nf_number}</td>
+                <td className="mono nf-cell">{invoice.nf_number}{invoice.manual_edited && <span className="manual-badge">editado</span>}</td>
                 <td>
                   <div className="supplier-cell">
                     <span title={invoice.issuer_name || ''}>{invoice.issuer_name || '—'}</span>
                     <small>{invoice.issuer_cnpj || '—'}</small>
                     {invoice.supplier_recognized ? <span className="supplier-profile-badge">perfil cadastrado</span> : <span className="supplier-unknown-badge">não cadastrado</span>}
+                    {invoice.recipient_registered && invoice.recipient_name_matches_registry !== false && <span className="recipient-profile-badge">destinatário cadastrado</span>}
+                    {invoice.recipient_registered && invoice.recipient_name_matches_registry === false && <span className="supplier-unknown-badge">nome diverge do cadastro</span>}
                   </div>
                 </td>
                 <td>
                   <div className="key-line">
                     <span className="mono key-text">{invoice.access_key}</span>
-                    {invoice.valid_key && <span className="valid-badge"><Check size={11} /> válida</span>}
+                    {invoice.valid_key && <span className="valid-badge"><Check size={11} /> chave válida</span>}
+                    {invoice.binding_verified ? <span className="valid-badge"><Check size={11} /> vínculo verificado</span> : <span className="supplier-unknown-badge">revisar vínculo</span>}
                     {invoice.extraction_method === 'ocr' && <span className="ocr-badge"><ScanText size={11} /> OCR</span>}
                   </div>
                 </td>
@@ -106,7 +110,12 @@ export function ResultGroup({ group, onCopy }: Props) {
                 <td>{invoice.total_amount ? `R$ ${invoice.total_amount}` : '—'}</td>
                 <td><strong>{invoice.volume_count ?? '—'}</strong>{invoice.volume_species && <small className="volume-species"> {invoice.volume_species.toLowerCase()}</small>}</td>
                 <td><div className="origin-cell"><span title={invoice.source_file || ''}>{invoice.source_file || '—'}</span><small>{invoice.source_kind === 'imagem' ? 'foto/imagem' : `pág. ${invoice.pages.join(', ')}`}{invoice.ocr_rotation ? ` • rot. ${invoice.ocr_rotation}°` : ''}</small></div></td>
-                <td className="action-cell"><button className="icon-button" onClick={() => onCopy(invoice.access_key, `NF ${invoice.nf_number} copiada`)} aria-label="Copiar chave"><Copy size={14} /></button></td>
+                <td className="action-cell">
+                  <div className="row-actions">
+                    <button className="icon-button" onClick={() => onEdit(invoice)} aria-label="Editar dados"><Pencil size={14} /></button>
+                    <button className="icon-button" onClick={() => onCopy(invoice.access_key, `NF ${invoice.nf_number} copiada`)} aria-label="Copiar chave"><Copy size={14} /></button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>

@@ -141,3 +141,72 @@ def test_shared_document_volume_is_not_multiplied():
     a = InvoiceRecord(access_key="1" * 44, nf_number="1", **base)
     b = InvoiceRecord(access_key="2" * 44, nf_number="2", **base)
     assert aggregate_volume_total([a, b]) == 79
+
+
+def test_cnpj_validation_rejects_bad_check_digits():
+    from app.parser import validate_cnpj
+    assert validate_cnpj("27.013.873/0001-95")
+    assert not validate_cnpj("27.013.873/0001-96")
+
+
+def test_native_pdf_does_not_repair_invalid_access_key():
+    invalid = "25261003775813000141550010033476911212155975"
+    text = f"CHAVE DE ACESSO\n{invalid}"
+    assert extract_access_keys(text, ocr_mode=False) == []
+
+
+def test_new_invoice_never_inherits_previous_recipient():
+    from app.parser import _build_records_from_page_texts
+    first = """
+    NORDIL-NORDESTE DISTRIBUICAO E LOGISTICA LTDA
+    DESTINATÁRIO/REMETENTE
+    NOME/RAZÃO SOCIAL CNPJ/CPF DATA DA EMISSÃO
+    FATURA
+    REDE BOM COMERCIO LTDA 27.013.873/0001-95 02/10/2026
+    CHAVE DE ACESSO
+    2526 1003 7758 1300 0141 5500 1003 3476 9112 1215 5976
+    EMISSAO: VALOR: CARGA:213352
+    """
+    second = """
+    NORDIL-NORDESTE DISTRIBUICAO E LOGISTICA LTDA
+    CHAVE DE ACESSO
+    2526 1003 7758 1300 0141 5500 1003 3476 9915 8171 2386
+    EMISSAO: VALOR: CARGA:213353
+    """
+    records = _build_records_from_page_texts(
+        [(1, first, "texto", 0, None, None), (2, second, "texto", 0, None, None)],
+        "batch.pdf",
+        "pdf",
+    )
+    assert len(records) == 2
+    by_nf = {record.nf_number: record for record in records}
+    assert by_nf["3347691"].recipient_cnpj == "27.013.873/0001-95"
+    assert by_nf["3347699"].recipient_cnpj is None
+    assert by_nf["3347699"].binding_verified is False
+
+
+def test_mare_distribuicao_profile_uses_carga():
+    from app.suppliers import get_supplier_profile, extract_supplier_carga
+    profile = get_supplier_profile(issuer_cnpj="21.610.221/0001-51")
+    assert profile is not None
+    assert profile.id == "mare-distribuicao"
+    assert profile.uses_carga is True
+    text = "EMISSAO: VALOR: CARGA:213422"
+    assert extract_supplier_carga(text, "21.610.221/0001-51", "MARE DISTRIBUICAO E COMERCIO LTDA") == "213422"
+
+
+def test_recipient_registry_cross_validation():
+    from app.recipients import validate_recipient_against_registry
+    registered, canonical, matches = validate_recipient_against_registry(
+        "27.013.873/0011-67", "REDE BOM COMERCIO LTDA"
+    )
+    assert registered is True
+    assert canonical == "REDE BOM COMERCIO LTDA"
+    assert matches is True
+
+    registered, canonical, matches = validate_recipient_against_registry(
+        "27.013.873/0011-67", "OUTRA EMPRESA LTDA"
+    )
+    assert registered is True
+    assert canonical == "REDE BOM COMERCIO LTDA"
+    assert matches is False

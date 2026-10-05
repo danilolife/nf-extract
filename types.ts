@@ -21,6 +21,12 @@ export type Invoice = {
   source_kind: 'pdf' | 'imagem'
   extraction_method: 'texto' | 'ocr'
   ocr_rotation: number
+  recipient_cnpj_valid: boolean
+  binding_verified: boolean
+  recipient_registered: boolean
+  recipient_registry_name: string | null
+  recipient_name_matches_registry: boolean | null
+  manual_edited?: boolean
 }
 
 export type AnalysisGroup = {
@@ -51,6 +57,11 @@ export type AnalysisResponse = {
     volume_records: number
     missing_volume_records: number
     total_volumes: number
+    verified_bindings: number
+    review_bindings: number
+    integrity_conflicts: number
+    registered_recipient_records: number
+    recipient_registry_mismatches: number
   }
   files: { filename: string; size_bytes: number; unique_keys: number; kind: 'pdf' | 'imagem'; ocr_used: boolean; volume_records: number; total_volumes: number }[]
   groups: AnalysisGroup[]

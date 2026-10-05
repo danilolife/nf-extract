@@ -17,6 +17,7 @@ from .parser import (
     parse_pdf_bytes,
     serialize_groups,
 )
+from .recipients import serialize_recipient_profiles
 from .suppliers import serialize_supplier_profiles
 
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE_MB", "25")) * 1024 * 1024
@@ -33,7 +34,7 @@ IMAGE_MIME_TYPES = {
 
 app = FastAPI(
     title="NF Extract API",
-    version="2.7.0",
+    version="3.0.0",
     description="API para extrair e organizar dados de DANFE/NF-e em PDF e fotos/imagens.",
 )
 
@@ -56,7 +57,7 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"status": "ok", "service": "nf-extract-api", "version": "2.7.0"}
+    return {"status": "ok", "service": "nf-extract-api", "version": "3.0.0"}
 
 
 @app.get("/api/suppliers")
@@ -64,6 +65,13 @@ def suppliers() -> dict:
     profiles = serialize_supplier_profiles()
     return {"count": len(profiles), "suppliers": profiles}
 
+
+
+
+@app.get("/api/recipients")
+def recipients() -> dict:
+    profiles = serialize_recipient_profiles()
+    return {"count": len(profiles), "recipients": profiles}
 
 @app.post("/api/analyze")
 async def analyze(files: Annotated[list[UploadFile], File(...)]) -> dict:
@@ -118,17 +126,53 @@ async def analyze(files: Annotated[list[UploadFile], File(...)]) -> dict:
     if not file_summaries:
         raise HTTPException(status_code=400, detail="Nenhum arquivo válido pôde ser processado.")
 
-    # Remove duplicidades entre arquivos, preservando os metadados mais completos.
+    # Remove duplicidades entre arquivos sem misturar metadados conflitantes.
+    # A mesma chave jamais pode trocar de destinatário silenciosamente.
     unique = {}
+    conflicts: list[str] = []
+    recipient_conflicted_keys: set[str] = set()
+    carga_conflicted_keys: set[str] = set()
     for record in all_records:
         existing = unique.get(record.access_key)
         if not existing:
             unique[record.access_key] = record
             continue
+
         existing.pages = sorted(set(existing.pages + record.pages))
-        existing.carga = existing.carga or record.carga
-        existing.recipient_name = existing.recipient_name or record.recipient_name
-        existing.recipient_cnpj = existing.recipient_cnpj or record.recipient_cnpj
+
+        recipient_conflict = (
+            existing.recipient_cnpj
+            and record.recipient_cnpj
+            and existing.recipient_cnpj != record.recipient_cnpj
+        )
+        carga_conflict = existing.carga and record.carga and existing.carga != record.carga
+
+        if recipient_conflict:
+            recipient_conflicted_keys.add(record.access_key)
+            conflicts.append(
+                f"Conflito na chave {record.access_key}: CNPJ destinatário divergente "
+                f"({existing.recipient_cnpj} x {record.recipient_cnpj}). O CNPJ foi ocultado para revisão."
+            )
+            existing.recipient_name = None
+            existing.recipient_cnpj = None
+            existing.recipient_cnpj_valid = False
+            existing.binding_verified = False
+        elif record.access_key not in recipient_conflicted_keys and not existing.recipient_cnpj and record.recipient_cnpj:
+            existing.recipient_name = record.recipient_name
+            existing.recipient_cnpj = record.recipient_cnpj
+            existing.recipient_cnpj_valid = record.recipient_cnpj_valid
+
+        if carga_conflict:
+            carga_conflicted_keys.add(record.access_key)
+            conflicts.append(
+                f"Conflito na chave {record.access_key}: cargas divergentes "
+                f"({existing.carga} x {record.carga}). A carga foi ocultada para revisão."
+            )
+            existing.carga = None
+            existing.binding_verified = False
+        elif record.access_key not in carga_conflicted_keys and not existing.carga and record.carga:
+            existing.carga = record.carga
+
         existing.issuer_name = existing.issuer_name or record.issuer_name
         existing.issuer_cnpj = existing.issuer_cnpj or record.issuer_cnpj
         existing.supplier_profile_id = existing.supplier_profile_id or record.supplier_profile_id
@@ -137,6 +181,18 @@ async def analyze(files: Annotated[list[UploadFile], File(...)]) -> dict:
         existing.total_amount = existing.total_amount or record.total_amount
         existing.volume_count = existing.volume_count or record.volume_count
         existing.volume_species = existing.volume_species or record.volume_species
+        if record.access_key not in recipient_conflicted_keys:
+            existing.recipient_cnpj_valid = existing.recipient_cnpj_valid or record.recipient_cnpj_valid
+            existing.recipient_registered = existing.recipient_registered or record.recipient_registered
+            existing.recipient_registry_name = existing.recipient_registry_name or record.recipient_registry_name
+            if existing.recipient_name_matches_registry is None:
+                existing.recipient_name_matches_registry = record.recipient_name_matches_registry
+        if record.access_key in recipient_conflicted_keys or record.access_key in carga_conflicted_keys:
+            existing.binding_verified = False
+        else:
+            existing.binding_verified = existing.binding_verified or record.binding_verified
+            if existing.recipient_registered and existing.recipient_name_matches_registry is False:
+                existing.binding_verified = False
         if existing.volume_mode == "per_invoice" and record.volume_mode != "per_invoice":
             existing.volume_mode = record.volume_mode
         if record.extraction_method == "ocr":
@@ -145,6 +201,7 @@ async def analyze(files: Annotated[list[UploadFile], File(...)]) -> dict:
         if record.source_kind == "imagem":
             existing.source_kind = "imagem"
 
+    warnings.extend(conflicts)
     records = list(unique.values())
     groups = group_records(records)
     distinct_cargas = sorted({r.carga for r in records if r.carga})
@@ -156,6 +213,18 @@ async def analyze(files: Annotated[list[UploadFile], File(...)]) -> dict:
     unknown_supplier_records = sum(1 for r in records if not r.supplier_recognized)
     volume_records = sum(1 for r in records if r.volume_count is not None)
     total_volumes = aggregate_volume_total(records)
+    verified_bindings = sum(1 for r in records if r.binding_verified)
+    review_bindings = len(records) - verified_bindings
+    registered_recipient_records = sum(1 for r in records if r.recipient_registered)
+    recipient_registry_mismatches = sum(
+        1 for r in records if r.recipient_registered and r.recipient_name_matches_registry is False
+    )
+    for record in records:
+        if record.recipient_registered and record.recipient_name_matches_registry is False:
+            warnings.append(
+                f"NF {record.nf_number}: o CNPJ {record.recipient_cnpj} está cadastrado como "
+                f"{record.recipient_registry_name}, mas o nome lido foi {record.recipient_name or 'não identificado'}. Revisar vínculo."
+            )
 
     return {
         "summary": {
@@ -172,6 +241,11 @@ async def analyze(files: Annotated[list[UploadFile], File(...)]) -> dict:
             "volume_records": volume_records,
             "missing_volume_records": len(records) - volume_records,
             "total_volumes": total_volumes,
+            "verified_bindings": verified_bindings,
+            "review_bindings": review_bindings,
+            "integrity_conflicts": len(conflicts),
+            "registered_recipient_records": registered_recipient_records,
+            "recipient_registry_mismatches": recipient_registry_mismatches,
         },
         "files": file_summaries,
         "groups": serialize_groups(groups),

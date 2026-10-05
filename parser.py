@@ -11,6 +11,8 @@ import fitz  # PyMuPDF
 import pytesseract
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
+from .recipients import validate_recipient_against_registry
+
 from .suppliers import (
     extract_supplier_carga,
     extract_supplier_volume,
@@ -57,6 +59,11 @@ class InvoiceRecord:
     source_kind: str = "pdf"
     extraction_method: str = "texto"
     ocr_rotation: int = 0
+    recipient_cnpj_valid: bool = False
+    binding_verified: bool = False
+    recipient_registered: bool = False
+    recipient_registry_name: str | None = None
+    recipient_name_matches_registry: bool | None = None
 
 
 @dataclass
@@ -91,6 +98,23 @@ def format_cnpj(value: str | None) -> str | None:
     if len(digits) != 14:
         return None
     return f"{digits[:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:12]}-{digits[12:]}"
+
+
+def validate_cnpj(value: str | None) -> bool:
+    """Validate a Brazilian CNPJ, including check digits."""
+    digits = digits_only(value)
+    if len(digits) != 14 or len(set(digits)) == 1:
+        return False
+
+    def calc(base: str, weights: list[int]) -> str:
+        total = sum(int(d) * w for d, w in zip(base, weights))
+        remainder = total % 11
+        digit = 0 if remainder < 2 else 11 - remainder
+        return str(digit)
+
+    d1 = calc(digits[:12], [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2])
+    d2 = calc(digits[:12] + d1, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2])
+    return digits[-2:] == d1 + d2
 
 
 def issuer_cnpj_from_key(key: str) -> str | None:
@@ -143,40 +167,36 @@ def repair_ocr_dv(key: str) -> str | None:
     return repaired if validate_nfe_key(repaired) else None
 
 
-def extract_access_keys(text: str) -> list[str]:
-    """Extract NF-e access keys robustly across supplier layouts and OCR.
+def extract_access_keys(text: str, ocr_mode: bool = False) -> list[str]:
+    """Extract only mathematically valid NF-e keys.
 
-    The Farpani layout, for example, places issuer CNPJ values immediately before
-    the access key. A naive 44-digit whitespace regex can begin inside that CNPJ.
-    We therefore try line-level candidates and token windows first, validating
-    every candidate with the NF-e check digit.
+    Native PDFs use strict line/group parsing. OCR may use token sliding, but
+    candidates are never auto-corrected. This favors correctness over recall:
+    a doubtful key is omitted instead of being fabricated.
     """
     found: list[str] = []
     seen: set[str] = set()
 
     def add_candidate(raw: str) -> None:
         key = digits_only(raw)
-        if len(key) != 44:
+        if len(key) != 44 or not validate_nfe_key(key) or key in seen:
             return
-        candidate = key if validate_nfe_key(key) else repair_ocr_dv(key)
-        if candidate and candidate not in seen:
-            seen.add(candidate)
-            found.append(candidate)
+        seen.add(key)
+        found.append(key)
 
-    def scan_segment(segment: str) -> None:
-        # 1) Exact line candidates are the strongest signal for text PDFs.
+    def scan_strict(segment: str) -> None:
+        # Exact 44-digit lines and the canonical 11 groups of four digits.
         for line in segment.splitlines():
             line_digits = digits_only(line)
-            if 43 <= len(line_digits) <= 45:
-                if len(line_digits) == 44:
-                    add_candidate(line_digits)
-
-        # 2) DANFE keys are commonly printed in eleven groups of four digits.
+            if len(line_digits) == 44:
+                add_candidate(line_digits)
         for match in re.finditer(r"(?<!\d)(?:\d{4}[ \t\r\n]+){10}\d{4}(?!\d)", segment):
             add_candidate(match.group(0))
 
-        # 3) OCR may split groups irregularly. Slide over numeric tokens and test
-        # concatenations that total exactly 44 digits.
+    def scan_ocr(segment: str) -> None:
+        scan_strict(segment)
+        # OCR may split the groups irregularly. Sliding is allowed only in OCR
+        # mode and still requires the official modulo-11 check digit.
         tokens = re.findall(r"\d+", segment)
         for i in range(len(tokens)):
             combined = ""
@@ -188,16 +208,18 @@ def extract_access_keys(text: str) -> list[str]:
                 if len(combined) > 44:
                     break
 
-        # 4) Last fallback for OCR that preserves only whitespace between digits.
-        for raw in re.findall(r"(?<!\d)(?:\d[\s\r\n]*){44}(?!\d)", segment):
-            add_candidate(raw)
+    scanner = scan_ocr if ocr_mode else scan_strict
 
-    # Prefer the section immediately after a key label.
+    # Prefer the printed access-key area. Do not mix unrelated CNPJs/numbers.
+    labelled = False
     for match in re.finditer(r"CHAVE\s+DE\s+ACESSO(?:\s+DA\s+NF-?E)?", text, flags=re.IGNORECASE):
-        scan_segment(text[match.end() : match.end() + 420])
+        labelled = True
+        scanner(text[match.end() : match.end() + 320])
 
+    # Only fall back globally when the label itself was not found or yielded no
+    # valid key. Native PDFs remain strict; OCR keeps its controlled token scan.
     if not found:
-        scan_segment(text)
+        scanner(text if not labelled else text[: min(len(text), 5000)])
 
     return found
 
@@ -298,6 +320,8 @@ def extract_recipient(text: str, issuer_cnpj: str | None = None) -> tuple[str | 
         return None, None
 
     recipient_cnpj = chosen.group(0)
+    if not validate_cnpj(recipient_cnpj):
+        return None, None
     before = segment[: chosen.start()]
     lines = [line.strip() for line in before.splitlines() if line.strip()]
 
@@ -560,7 +584,7 @@ def _ocr_score(text: str) -> int:
     upper = normalize_text(text)
     digit_count = len(re.findall(r"\d", text))
     score += min(digit_count // 8, 20)
-    score += 50 * len(extract_access_keys(text))
+    score += 50 * len(extract_access_keys(text, ocr_mode=True))
     score += 8 * len(CNPJ_RE.findall(text))
     for marker in ("CHAVE", "ACESS", "DESTINATARIO", "REMETENTE", "DANFE", "NOTA FISCAL"):
         if marker in upper:
@@ -576,7 +600,7 @@ def ocr_image_best(image: Image.Image) -> tuple[str, int]:
     # Start with the original image. If a valid key is found, avoid extra OCR rotations.
     first = _ocr_once(base, psm=6)
     attempts.append((0, first))
-    if extract_access_keys(first):
+    if extract_access_keys(first, ocr_mode=True):
         sparse = _ocr_once(base, psm=11)
         return (f"{first}\n{sparse}".strip(), 0)
 
@@ -585,7 +609,7 @@ def ocr_image_best(image: Image.Image) -> tuple[str, int]:
         rotated = base.rotate(-angle, expand=True)
         text = _ocr_once(rotated, psm=6)
         attempts.append((angle, text))
-        if extract_access_keys(text):
+        if extract_access_keys(text, ocr_mode=True):
             sparse = _ocr_once(rotated, psm=11)
             return (f"{text}\n{sparse}".strip(), angle)
 
@@ -598,7 +622,7 @@ def ocr_image_best(image: Image.Image) -> tuple[str, int]:
 def _page_text_from_pdf_page(page: fitz.Page) -> tuple[str, str, int, int | None, str | None]:
     text = page.get_text("text") or ""
     layout_volume, layout_species = extract_volume_from_page_layout(page)
-    if extract_access_keys(text):
+    if extract_access_keys(text, ocr_mode=False):
         return text, "texto", 0, layout_volume, layout_species
 
     # Avoid expensive OCR on native-text pages such as boleto pages. OCR is
@@ -626,44 +650,35 @@ def _build_records_from_page_texts(
     source_kind: str,
 ) -> list[InvoiceRecord]:
     records_by_key: dict[str, InvoiceRecord] = {}
-    context_by_issuer: dict[str, dict[str, str | None]] = defaultdict(
-        lambda: {"carga": None, "recipient_name": None, "recipient_cnpj": None, "issuer_name": None}
-    )
-
     for page_number, text, extraction_method, ocr_rotation, layout_volume, layout_species in page_texts:
         if not text.strip():
             continue
 
-        keys = extract_access_keys(text)
+        keys = extract_access_keys(text, ocr_mode=(extraction_method == "ocr"))
         if not keys:
             continue
 
         for key in keys:
             issuer_cnpj = issuer_cnpj_from_key(key)
-            issuer_id = digits_only(issuer_cnpj) or "unknown"
-            context = context_by_issuer[issuer_id]
-
-            issuer_name = extract_issuer_name(text, issuer_cnpj) or context["issuer_name"]
+            issuer_name = extract_issuer_name(text, issuer_cnpj)
             issuer_name = supplier_display_name(issuer_cnpj, issuer_name)
             profile = get_supplier_profile(issuer_cnpj=issuer_cnpj, issuer_name=issuer_name)
-            if issuer_name:
-                context["issuer_name"] = issuer_name
 
+            # Critical integrity rule: recipient metadata belongs only to the
+            # current DANFE page. Never inherit a CNPJ/name from the previous NF.
             recipient_name, recipient_cnpj = extract_recipient(text, issuer_cnpj)
-            if recipient_cnpj:
-                context["recipient_cnpj"] = recipient_cnpj
-                context["recipient_name"] = recipient_name or context["recipient_name"]
-            else:
-                recipient_cnpj = context["recipient_cnpj"]
-                recipient_name = context["recipient_name"]
+            recipient_cnpj_valid = validate_cnpj(recipient_cnpj)
+            if not recipient_cnpj_valid:
+                recipient_name, recipient_cnpj = None, None
 
+            recipient_registered, recipient_registry_name, recipient_name_matches_registry = validate_recipient_against_registry(
+                recipient_cnpj, recipient_name
+            )
+
+            # Same isolation rule for carga: a new key must prove its own carga.
             carga: str | None = None
             if supplier_uses_carga(issuer_name, issuer_cnpj):
-                carga = extract_supplier_carga(text, issuer_cnpj, issuer_name) or context["carga"]
-                if carga:
-                    context["carga"] = carga
-            else:
-                context["carga"] = None
+                carga = extract_supplier_carga(text, issuer_cnpj, issuer_name)
 
             issue_date = extract_issue_date(text, recipient_cnpj)
             total_amount = extract_total_amount(text)
@@ -698,6 +713,15 @@ def _build_records_from_page_texts(
                     source_kind=source_kind,
                     extraction_method=extraction_method,
                     ocr_rotation=ocr_rotation,
+                    recipient_cnpj_valid=recipient_cnpj_valid,
+                    binding_verified=bool(
+                        validate_nfe_key(key)
+                        and recipient_cnpj_valid
+                        and (not recipient_registered or recipient_name_matches_registry is True)
+                    ),
+                    recipient_registered=recipient_registered,
+                    recipient_registry_name=recipient_registry_name,
+                    recipient_name_matches_registry=recipient_name_matches_registry,
                 )
             else:
                 record = records_by_key[key]
@@ -714,6 +738,16 @@ def _build_records_from_page_texts(
                 record.total_amount = record.total_amount or total_amount
                 record.volume_count = record.volume_count or volume_count
                 record.volume_species = record.volume_species or volume_species
+                record.recipient_cnpj_valid = record.recipient_cnpj_valid or recipient_cnpj_valid
+                record.recipient_registered = record.recipient_registered or recipient_registered
+                record.recipient_registry_name = record.recipient_registry_name or recipient_registry_name
+                if record.recipient_name_matches_registry is None:
+                    record.recipient_name_matches_registry = recipient_name_matches_registry
+                record.binding_verified = record.binding_verified or bool(
+                    validate_nfe_key(key)
+                    and recipient_cnpj_valid
+                    and (not recipient_registered or recipient_name_matches_registry is True)
+                )
                 if extraction_method == "ocr":
                     record.extraction_method = "ocr"
                     record.ocr_rotation = ocr_rotation or record.ocr_rotation

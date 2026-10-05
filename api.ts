@@ -1,4 +1,5 @@
 import type { AnalysisResponse } from './types'
+import type { RecipientProfile } from './components/EditInvoiceModal'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
 
@@ -23,4 +24,11 @@ export async function analyzeFiles(files: File[]): Promise<AnalysisResponse> {
   }
 
   return response.json()
+}
+
+export async function fetchRecipients(): Promise<RecipientProfile[]> {
+  const response = await fetch(`${API_URL}/api/recipients`)
+  if (!response.ok) return []
+  const payload = await response.json()
+  return payload.recipients || []
 }

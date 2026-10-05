@@ -1,2 +1,2 @@
-NF Extract Online v2.7.0
-Extração de quantidade de volumes em PDF, foto e OCR
+NF Extract Online v3.0.0
+Correção manual + validação cruzada + cadastro de destinatários + Maré com carga

@@ -5,6 +5,7 @@ interface Props {
   files: File[]
   onFiles: (files: File[]) => void
   onRemove: (index: number) => void
+  onClear: () => void
   disabled?: boolean
 }
 
@@ -12,7 +13,7 @@ function isImage(file: File) {
   return file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|tiff?)$/i.test(file.name)
 }
 
-export function UploadZone({ files, onFiles, onRemove, disabled }: Props) {
+export function UploadZone({ files, onFiles, onRemove, onClear, disabled }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const cameraRef = useRef<HTMLInputElement | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -90,7 +91,17 @@ export function UploadZone({ files, onFiles, onRemove, disabled }: Props) {
 
       {files.length > 0 && (
         <div className="file-list">
-          <div className="file-list-head"><span>Arquivos selecionados</span><strong>{files.length}</strong></div>
+          <div className="file-list-head">
+            <div className="file-list-title"><span>Arquivos selecionados</span><strong>{files.length}</strong></div>
+            <button
+              className="clear-files-button"
+              type="button"
+              disabled={disabled}
+              onClick={(event) => { event.stopPropagation(); onClear() }}
+            >
+              <Trash2 size={14} /> Limpar anexos
+            </button>
+          </div>
           {files.map((file, index) => (
             <div className="file-row" key={`${file.name}-${file.size}-${index}`}>
               <div className="file-main">

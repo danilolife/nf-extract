@@ -355,3 +355,135 @@ tbody tr:hover { background: rgba(124,92,244,.025); }
 @media (max-width: 850px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+
+/* v2.9 — fluxo sem recarregar a aplicação */
+.file-list-head {
+  gap: 12px;
+}
+.file-list-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.clear-files-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.clear-files-button:hover:not(:disabled) {
+  color: #b74747;
+  border-color: rgba(183,71,71,.28);
+  background: rgba(183,71,71,.06);
+}
+.clear-files-button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.new-analysis-button {
+  color: #a44b4b;
+  border-color: rgba(164,75,75,.20);
+}
+.new-analysis-button:hover {
+  background: rgba(164,75,75,.06);
+}
+@media (max-width: 620px) {
+  .file-list-head {
+    align-items: center;
+  }
+  .clear-files-button {
+    padding: 7px 8px;
+  }
+  .results-heading-actions .new-analysis-button {
+    grid-column: 1 / -1;
+  }
+}
+
+/* v3.0 — correção manual + cadastro de destinatários */
+.row-actions { display: inline-flex; align-items: center; gap: 6px; }
+.manual-badge,
+.recipient-profile-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  margin-left: 6px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 760;
+  line-height: 1;
+  white-space: nowrap;
+}
+.manual-badge { color: #6b56cf; background: rgba(124,92,244,.10); border: 1px solid rgba(124,92,244,.12); }
+.recipient-profile-badge { color: #236f83; background: rgba(35,138,160,.09); border: 1px solid rgba(35,138,160,.12); }
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(18, 16, 24, .44);
+  backdrop-filter: blur(8px);
+}
+.edit-modal {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--surface);
+  box-shadow: 0 26px 80px rgba(32, 24, 50, .28);
+  padding: 22px;
+}
+.edit-modal-head { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; }
+.edit-modal-head h3 { margin: 8px 0 5px; font-size: 22px; }
+.edit-modal-head p { margin: 0; max-width: 590px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 20px; }
+.edit-grid label { display: grid; gap: 7px; }
+.edit-grid label > span { color: var(--muted); font-size: 10px; font-weight: 760; text-transform: uppercase; letter-spacing: .04em; }
+.edit-grid input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-soft);
+  color: var(--text);
+  padding: 11px 12px;
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+.edit-grid input:focus { border-color: rgba(124,92,244,.45); box-shadow: 0 0 0 3px rgba(124,92,244,.08); }
+.edit-grid small { color: var(--muted); font-size: 9px; }
+.edit-wide { grid-column: 1 / -1; }
+.edit-checks { display: grid; gap: 8px; margin-top: 18px; }
+.edit-check { display: flex; gap: 8px; align-items: center; padding: 9px 11px; border-radius: 10px; font-size: 11px; font-weight: 650; }
+.edit-check.ok { color: var(--success); background: rgba(35,133,100,.07); border: 1px solid rgba(35,133,100,.10); }
+.edit-check.warning { color: #98691d; background: rgba(215,154,38,.08); border: 1px solid rgba(215,154,38,.12); }
+.edit-modal-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 20px; }
+.compact-primary { width: auto; padding: 10px 14px; }
+@media (max-width: 620px) {
+  .modal-backdrop { padding: 10px; place-items: end center; }
+  .edit-modal { max-height: 90vh; border-radius: 20px 20px 10px 10px; padding: 17px; }
+  .edit-grid { grid-template-columns: 1fr; }
+  .edit-wide { grid-column: auto; }
+  .edit-modal-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .edit-modal-actions button { width: 100%; }
+}
+.recipient-cell-stack { display: grid; gap: 5px; align-items: start; }
+.recipient-cell-stack .recipient-profile-badge,
+.recipient-cell-stack .supplier-unknown-badge,
+.recipient-cell-stack .manual-badge { margin-left: 0; }

@@ -9,7 +9,25 @@
       "aliases": [
         "NORDIL",
         "NORDIL NORDESTE",
-        "NORDIL-NORDESTE",
+        "NORDIL-NORDESTE"
+      ],
+      "uses_carga": true,
+      "carga_patterns": [
+        "\\bCARGA\\s*:?\\s*(\\d{4,})\\b",
+        "\\bNRO\\s*CARGA\\s*:?\\s*(\\d{4,})\\b"
+      ],
+      "volume_patterns": [],
+      "volume_mode": "per_invoice"
+    },
+    {
+      "id": "mare-distribuicao",
+      "display_name": "MARE DISTRIBUICAO E COMERCIO LTDA",
+      "cnpjs": [
+        "21.610.221/0001-51"
+      ],
+      "aliases": [
+        "MARE DISTRIBUICAO",
+        "MARE DISTRIBUIÇÃO",
         "NORDIL MARE",
         "NORDIL MARÉ"
       ],

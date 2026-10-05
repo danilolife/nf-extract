@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
@@ -14,14 +14,17 @@ import {
   List,
   ScanText,
   Moon,
+  Pencil,
   RotateCcw,
   Search,
   ShieldCheck,
   Sparkles,
   Sun,
+  Trash2,
   X,
 } from 'lucide-react'
-import { analyzeFiles } from './api'
+import { analyzeFiles, fetchRecipients } from './api'
+import { EditInvoiceModal, type RecipientProfile } from './components/EditInvoiceModal'
 import { ResultGroup } from './components/ResultGroup'
 import { UploadZone } from './components/UploadZone'
 import type { AnalysisGroup, AnalysisResponse, Invoice } from './types'
@@ -86,6 +89,65 @@ function aggregateVolumeTotal(invoices: Invoice[]) {
   return total
 }
 
+function digitsOnly(value: string | null | undefined) {
+  return (value || '').replace(/\D/g, '')
+}
+
+function validateCnpj(value: string | null | undefined) {
+  const digits = digitsOnly(value)
+  if (digits.length !== 14 || new Set(digits).size === 1) return false
+  const calc = (base: string, weights: number[]) => {
+    const total = [...base].reduce((sum, digit, index) => sum + Number(digit) * weights[index], 0)
+    const remainder = total % 11
+    return String(remainder < 2 ? 0 : 11 - remainder)
+  }
+  const d1 = calc(digits.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2])
+  const d2 = calc(digits.slice(0, 12) + d1, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2])
+  return digits.slice(-2) === d1 + d2
+}
+
+function keyDerivedNf(accessKey: string) {
+  return accessKey.length === 44 ? String(Number(accessKey.slice(25, 34))) : ''
+}
+
+function regroupInvoices(invoices: Invoice[]): AnalysisGroup[] {
+  const buckets = new Map<string, Invoice[]>()
+  invoices.forEach((invoice) => {
+    const cnpj = invoice.recipient_cnpj || 'CNPJ NÃO IDENTIFICADO'
+    const name = invoice.recipient_name || 'DESTINATÁRIO NÃO IDENTIFICADO'
+    const issuer = invoice.issuer_cnpj || 'CNPJ DO FORNECEDOR NÃO IDENTIFICADO'
+    const key = invoice.carga
+      ? ['carga', invoice.carga, cnpj, issuer, name].join('|')
+      : ['destinatario', cnpj, name].join('|')
+    buckets.set(key, [...(buckets.get(key) || []), invoice])
+  })
+
+  const groups: AnalysisGroup[] = []
+  buckets.forEach((items) => {
+    items.sort((a, b) => Number(a.nf_number) - Number(b.nf_number))
+    const first = items[0]
+    const issuerNames = [...new Set(items.map((item) => item.issuer_name).filter(Boolean) as string[])]
+    const issuerCnpjs = [...new Set(items.map((item) => item.issuer_cnpj).filter(Boolean) as string[])]
+    groups.push({
+      group_type: first.carga ? 'carga' : 'destinatario',
+      carga: first.carga || null,
+      recipient_cnpj: first.recipient_cnpj || 'CNPJ NÃO IDENTIFICADO',
+      recipient_name: first.recipient_name || 'DESTINATÁRIO NÃO IDENTIFICADO',
+      issuer_name: issuerNames.length === 1 ? issuerNames[0] : 'VÁRIOS FORNECEDORES',
+      issuer_cnpj: issuerCnpjs.length === 1 ? issuerCnpjs[0] : 'VÁRIOS CNPJS',
+      key_count: items.length,
+      volume_total: aggregateVolumeTotal(items),
+      volume_records: items.filter((item) => item.volume_count != null).length,
+      invoices: items,
+    })
+  })
+
+  return groups.sort((a, b) => {
+    if (Boolean(a.carga) !== Boolean(b.carga)) return a.carga ? -1 : 1
+    return (a.carga || '').localeCompare(b.carga || '', 'pt-BR') || a.recipient_cnpj.localeCompare(b.recipient_cnpj, 'pt-BR')
+  })
+}
+
 function downloadFile(filename: string, content: string, type: string) {
   const blob = new Blob([content], { type })
   const url = URL.createObjectURL(blob)
@@ -122,6 +184,7 @@ function buildCsv(invoices: Invoice[]) {
     invoice.volume_count,
     invoice.volume_species,
     invoice.valid_key ? 'Sim' : 'Não',
+    invoice.binding_verified ? 'Verificado' : 'Revisar',
     invoice.source_file,
     invoice.source_kind,
     invoice.extraction_method,
@@ -163,6 +226,12 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('groups')
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const [sortMode, setSortMode] = useState<SortMode>('nf-asc')
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null)
+  const [recipients, setRecipients] = useState<RecipientProfile[]>([])
+
+  useEffect(() => {
+    fetchRecipients().then(setRecipients).catch(() => setRecipients([]))
+  }, [])
 
   const canAnalyze = files.length > 0 && !loading
 
@@ -260,6 +329,25 @@ export default function App() {
     setError('')
   }
 
+  function clearAttachments() {
+    setFiles([])
+    setError('')
+    setToast('Anexos removidos')
+    window.setTimeout(() => setToast(''), 1800)
+  }
+
+  function startNewAnalysis() {
+    setFiles([])
+    setResult(null)
+    setFilters(EMPTY_FILTERS)
+    setSortMode('nf-asc')
+    setViewMode('groups')
+    setError('')
+    setToast('Pronto para uma nova análise')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.setTimeout(() => setToast(''), 1800)
+  }
+
   async function handleAnalyze() {
     if (!canAnalyze) return
     setLoading(true)
@@ -290,6 +378,56 @@ export default function App() {
 
   function setFilter<K extends keyof Filters>(key: K, value: Filters[K]) {
     setFilters((current) => ({ ...current, [key]: value }))
+  }
+
+  function applyManualEdit(invoice: Invoice, changes: Partial<Invoice>) {
+    if (!result) return
+    const cnpj = changes.recipient_cnpj ?? invoice.recipient_cnpj
+    const name = changes.recipient_name ?? invoice.recipient_name
+    const nfNumber = changes.nf_number ?? invoice.nf_number
+    const cnpjValid = validateCnpj(cnpj)
+    const profile = recipients.find((item) => digitsOnly(item.cnpj) === digitsOnly(cnpj)) || null
+    const normalizedName = normalize(name)
+    const nameMatchesRegistry = profile
+      ? Boolean(normalizedName) && [profile.display_name, ...profile.aliases].map(normalize).some((candidate) => candidate && (candidate.includes(normalizedName) || normalizedName.includes(candidate)))
+      : null
+    const nfMatches = nfNumber === keyDerivedNf(invoice.access_key)
+
+    const updated: Invoice = {
+      ...invoice,
+      ...changes,
+      recipient_cnpj_valid: cnpjValid,
+      recipient_registered: Boolean(profile),
+      recipient_registry_name: profile?.display_name || null,
+      recipient_name_matches_registry: nameMatchesRegistry,
+      binding_verified: Boolean(invoice.valid_key && cnpjValid && nfMatches && (!profile || nameMatchesRegistry === true)),
+      manual_edited: true,
+    }
+
+    const invoices = result.groups
+      .flatMap((group) => group.invoices)
+      .map((item) => item.access_key === invoice.access_key ? updated : item)
+    const groups = regroupInvoices(invoices)
+    const verified = invoices.filter((item) => item.binding_verified).length
+    const registered = invoices.filter((item) => item.recipient_registered).length
+    const mismatches = invoices.filter((item) => item.recipient_registered && item.recipient_name_matches_registry === false).length
+
+    setResult({
+      ...result,
+      groups,
+      summary: {
+        ...result.summary,
+        cargas: new Set(invoices.map((item) => item.carga).filter(Boolean)).size,
+        recipient_cnpjs: new Set(invoices.map((item) => item.recipient_cnpj).filter(Boolean)).size,
+        verified_bindings: verified,
+        review_bindings: invoices.length - verified,
+        registered_recipient_records: registered,
+        recipient_registry_mismatches: mismatches,
+      },
+    })
+    setEditingInvoice(null)
+    setToast('Correção aplicada nesta análise')
+    window.setTimeout(() => setToast(''), 2200)
   }
 
   const visibleKeys = filteredInvoices.map((invoice) => invoice.access_key).join('\n')
@@ -333,6 +471,7 @@ export default function App() {
                 setResult(null)
                 setFilters(EMPTY_FILTERS)
               }}
+              onClear={clearAttachments}
               disabled={loading}
             />
 
@@ -361,7 +500,7 @@ export default function App() {
               <li><CheckCircle2 size={16} /> OCR com rotação automática</li>
               <li><CheckCircle2 size={16} /> Câmera do celular e pré-visualização</li>
               <li><CheckCircle2 size={16} /> Perfis de fornecedor por CNPJ e nome</li>
-              <li><CheckCircle2 size={16} /> Regra de carga configurável por fornecedor</li>
+              <li><CheckCircle2 size={16} /> Nordil e Maré usam carga operacional</li>
               <li><CheckCircle2 size={16} /> Outros fornecedores por CNPJ</li>
               <li><CheckCircle2 size={16} /> Quantidade de volumes por NF</li>
               <li><CheckCircle2 size={16} /> Filtros em todas as informações</li>
@@ -382,6 +521,9 @@ export default function App() {
                 <p>{result.summary.unique_keys} chaves únicas extraídas de {result.summary.files} arquivo{result.summary.files === 1 ? '' : 's'}{result.summary.ocr_records > 0 ? ` • ${result.summary.ocr_records} por OCR` : ''}.</p>
               </div>
               <div className="results-heading-actions">
+                <button className="ghost-button new-analysis-button" type="button" onClick={startNewAnalysis}>
+                  <Trash2 size={16} /> Nova análise
+                </button>
                 <button className="secondary-button" disabled={!filteredInvoices.length} onClick={() => copy(visibleKeys, 'Chaves filtradas copiadas')}>
                   <Copy size={16} /> Copiar visíveis
                 </button>
@@ -400,8 +542,9 @@ export default function App() {
                 <div><strong>{filteredInvoices.length}</strong><span>chaves exibidas</span></div>
                 {filteredInvoices.length !== result.summary.unique_keys && <small>de {result.summary.unique_keys}</small>}
               </div>
-              <div className="stat-card"><strong>{filteredTotals.cargas}</strong><span>cargas Nordil</span></div>
+              <div className="stat-card"><strong>{filteredTotals.cargas}</strong><span>cargas operacionais</span></div>
               <div className="stat-card"><strong>{filteredTotals.cnpjs}</strong><span>CNPJs</span></div>
+              <div className="stat-card"><strong>{filteredInvoices.filter((invoice) => invoice.binding_verified).length}</strong><span>vínculos verificados</span><small>{filteredInvoices.filter((invoice) => !invoice.binding_verified).length} para revisar</small></div>
               <div className="stat-card"><strong>{filteredTotals.volumes.toLocaleString('pt-BR')}</strong><span>volumes identificados</span><small>{filteredTotals.volumeRecords} NF{filteredTotals.volumeRecords === 1 ? '' : 's'} com volume</small></div>
               <div className="stat-card"><strong>{filteredInvoices.filter((invoice) => invoice.extraction_method === 'ocr').length}</strong><span>lidas por OCR</span></div>
               <div className="stat-card"><strong>{new Set(filteredInvoices.filter((invoice) => invoice.supplier_recognized).map((invoice) => invoice.issuer_cnpj)).size}</strong><span>fornecedores cadastrados</span></div>
@@ -556,7 +699,7 @@ export default function App() {
             ) : viewMode === 'groups' ? (
               <div className="groups-stack">
                 {filteredGroups.map((group) => (
-                  <ResultGroup key={`${group.group_type}-${group.carga || 'sem-carga'}-${group.recipient_cnpj}`} group={group} onCopy={copy} />
+                  <ResultGroup key={`${group.group_type}-${group.carga || 'sem-carga'}-${group.recipient_cnpj}`} group={group} onCopy={copy} onEdit={setEditingInvoice} />
                 ))}
               </div>
             ) : (
@@ -576,6 +719,7 @@ export default function App() {
                         <th>Volumes</th>
                         <th>Origem</th>
                         <th>Leitura</th>
+                        <th>Integridade</th>
                         <th></th>
                       </tr>
                     </thead>
@@ -584,7 +728,7 @@ export default function App() {
                         <tr key={invoice.access_key}>
                           <td><span className={invoice.carga ? 'load-badge' : 'no-load-badge'}>{invoice.carga || 'Sem carga'}</span></td>
                           <td><div className="supplier-cell"><span title={invoice.issuer_name || ''}>{invoice.issuer_name || '—'}</span><small>{invoice.issuer_cnpj || '—'}</small>{invoice.supplier_recognized ? <span className="supplier-profile-badge">perfil cadastrado</span> : <span className="supplier-unknown-badge">não cadastrado</span>}</div></td>
-                          <td className="recipient-cell" title={invoice.recipient_name || ''}>{invoice.recipient_name || '—'}</td>
+                          <td className="recipient-cell" title={invoice.recipient_name || ''}><div className="recipient-cell-stack"><span>{invoice.recipient_name || '—'}</span>{invoice.recipient_registered && invoice.recipient_name_matches_registry !== false && <span className="recipient-profile-badge">cadastrado</span>}{invoice.recipient_registered && invoice.recipient_name_matches_registry === false && <span className="supplier-unknown-badge">nome divergente</span>}{invoice.manual_edited && <span className="manual-badge">editado</span>}</div></td>
                           <td className="mono small-mono">{invoice.recipient_cnpj || '—'}</td>
                           <td className="mono nf-cell">{invoice.nf_number}</td>
                           <td>
@@ -598,7 +742,8 @@ export default function App() {
                           <td><strong>{invoice.volume_count ?? '—'}</strong>{invoice.volume_species && <small className="volume-species"> {invoice.volume_species.toLowerCase()}</small>}</td>
                           <td><div className="origin-cell"><span title={invoice.source_file || ''}>{invoice.source_file || '—'}</span><small>{invoice.source_kind === 'imagem' ? 'foto/imagem' : `pág. ${invoice.pages.join(', ')}`}</small></div></td>
                           <td><span className={invoice.extraction_method === 'ocr' ? 'ocr-badge' : 'text-badge'}><ScanText size={11} /> {invoice.extraction_method === 'ocr' ? 'OCR' : 'texto'}</span></td>
-                          <td className="action-cell"><button className="icon-button" onClick={() => copy(invoice.access_key, `NF ${invoice.nf_number} copiada`)} aria-label="Copiar chave"><Copy size={14} /></button></td>
+                          <td>{invoice.binding_verified ? <span className="valid-badge"><Check size={11} /> verificado</span> : <span className="supplier-unknown-badge">revisar</span>}</td>
+                          <td className="action-cell"><div className="row-actions"><button className="icon-button" onClick={() => setEditingInvoice(invoice)} aria-label="Editar dados"><Pencil size={14} /></button><button className="icon-button" onClick={() => copy(invoice.access_key, `NF ${invoice.nf_number} copiada`)} aria-label="Copiar chave"><Copy size={14} /></button></div></td>
                         </tr>
                       ))}
                     </tbody>
@@ -611,6 +756,13 @@ export default function App() {
       </main>
 
       <footer className="footer"><span>NF Extract</span> • extração de DANFE com interface de trabalho moderna.</footer>
+
+      <EditInvoiceModal
+        invoice={editingInvoice}
+        recipients={recipients}
+        onClose={() => setEditingInvoice(null)}
+        onSave={applyManualEdit}
+      />
 
       {toast && (
         <div className="toast">

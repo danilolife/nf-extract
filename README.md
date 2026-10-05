@@ -1,4 +1,4 @@
-# NF Extract 2.5
+# NF Extract 2.9
 
 Aplicação web full-stack para analisar DANFE/NF-e em PDF, foto ou imagem e transformar os documentos em dados prontos para filtrar, copiar e exportar.
 
@@ -291,3 +291,48 @@ A interface também ganhou:
 - filtro `Com volume identificado / Sem volume identificado`;
 - volumes nas exportações CSV e TXT;
 - volumes no bloco copiado de cada grupo.
+
+
+## Novidades da versão 2.8 — integridade de chave e destinatário
+
+Esta versão endurece a associação entre **chave de acesso, NF, carga e CNPJ do destinatário**, principalmente em lotes com vários PDFs da Nordil.
+
+Principais mudanças:
+
+- uma nova NF nunca herda automaticamente o destinatário/CNPJ da NF anterior;
+- PDFs com texto usam extração **estrita** da chave, sem reconstrução automática;
+- OCR continua disponível, mas uma chave só é aceita quando o DV oficial da NF-e confere;
+- CNPJ do destinatário passa pela validação dos dígitos verificadores;
+- se a mesma chave aparecer com CNPJs ou cargas divergentes, o sistema não escolhe silenciosamente: oculta o campo conflitante e gera aviso para revisão;
+- cada registro recebe `binding_verified`, indicando que chave válida e CNPJ válido foram encontrados no próprio DANFE;
+- a interface mostra **vínculo verificado** ou **revisar vínculo** e um contador de integridade.
+
+### Teste de regressão com lote Nordil
+
+A versão foi testada enviando simultaneamente 10 PDFs Nordil com destinatários diferentes. Resultado esperado e obtido: **69 chaves únicas, 10 cargas, 10 CNPJs de destinatário, 69 vínculos verificados e 0 conflitos**.
+
+
+## Novidades da versão 2.9 — nova análise sem reiniciar
+
+- Botão **Limpar anexos** no bloco de arquivos selecionados.
+- Botão **Nova análise** na Central de resultados.
+- A nova análise limpa anexos, resultados, filtros e ordenação sem recarregar a página.
+- O backend não é reiniciado ao trocar os documentos, reduzindo a necessidade de esperar um novo cold start da hospedagem.
+
+
+## v3.0 — validação cruzada e Maré
+
+- **Maré Distribuição e Comércio Ltda** (CNPJ `21.610.221/0001-51`) possui perfil próprio e **usa carga operacional**, assim como a Nordil.
+- Cadastro local de destinatários conhecidos em `backend/app/recipients.json`.
+- Validação cruzada do CNPJ/nome do destinatário contra o cadastro quando o CNPJ é conhecido.
+- Endpoint `GET /api/recipients` para listar destinatários cadastrados.
+- Edição manual na interface para NF, destinatário, CNPJ, carga, volumes e espécie.
+- A chave de acesso nunca é alterada pela edição manual. Se a NF digitada divergir da NF derivada da chave, o vínculo fica marcado para revisão.
+- Correções manuais valem para a análise atual; para cadastro persistente de novos destinatários, adicione-os ao arquivo `recipients.json` ou migre esse cadastro para um banco como Supabase.
+
+### Regra de carga
+
+- Nordil (`03.775.813/0001-41`): usa carga.
+- Maré Distribuição / Nordil Maré (`21.610.221/0001-51`): usa carga.
+- Multigiro e G.R: não usam carga operacional no agrupamento.
+- Farpani: não usa carga operacional no agrupamento.

@@ -1,0 +1,54 @@
+{
+  "recipients": [
+    {
+      "cnpj": "12.919.734/0001-58",
+      "display_name": "MERC FARIAS LTDA",
+      "aliases": ["MERC FARIAS LTDA", "FARIAS SUPERMERCADO LTDA"]
+    },
+    {
+      "cnpj": "12.919.734/0003-10",
+      "display_name": "MERC FARIAS LTDA",
+      "aliases": ["MERC FARIAS LTDA", "FARIAS SUPERMERCADO LTDA"]
+    },
+    {
+      "cnpj": "12.919.734/0005-81",
+      "display_name": "MERC FARIAS LTDA",
+      "aliases": ["MERC FARIAS LTDA", "FARIAS SUPERMERCADO LTDA"]
+    },
+    {
+      "cnpj": "07.880.170/0001-57",
+      "display_name": "REDE BAIRRO SUPERMERCADO LTDA",
+      "aliases": ["REDE BAIRRO SUPERMERCADO LTDA"]
+    },
+    {
+      "cnpj": "27.013.873/0001-95",
+      "display_name": "REDE BOM COMERCIO LTDA",
+      "aliases": ["REDE BOM COMERCIO LTDA"]
+    },
+    {
+      "cnpj": "27.013.873/0003-57",
+      "display_name": "AGRESTE COMERCIO ATACADO E VAREJO LTDA",
+      "aliases": ["AGRESTE COMERCIO ATACADO E VAREJO LTDA"]
+    },
+    {
+      "cnpj": "27.013.873/0004-38",
+      "display_name": "AGRESTE COMERCIO ATACADO E VAREJO EIRELI",
+      "aliases": ["AGRESTE COMERCIO ATACADO E VAREJO EIRELI", "AGRESTE COMERCIO ATACADO E VAREJO LTDA"]
+    },
+    {
+      "cnpj": "27.013.873/0008-61",
+      "display_name": "REDE BOM COMERCIO LTDA",
+      "aliases": ["REDE BOM COMERCIO LTDA"]
+    },
+    {
+      "cnpj": "27.013.873/0011-67",
+      "display_name": "REDE BOM COMERCIO LTDA",
+      "aliases": ["REDE BOM COMERCIO LTDA"]
+    },
+    {
+      "cnpj": "24.383.535/0001-57",
+      "display_name": "BALCAO FARIAS COMERCIO ATACADISTA DE ALIMENTOS LTDA",
+      "aliases": ["BALCAO FARIAS COMERCIO ATACADISTA DE ALIMENTOS LTDA", "BALCÃO FARIAS COMERCIO ATACADISTA DE ALIMENTOS LTDA"]
+    }
+  ]
+}
